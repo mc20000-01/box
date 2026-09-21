@@ -1,0 +1,8 @@
+box who|BoxedLANG
+say Hello $who
+box i|0
+premark loop
+say Count $i
+math i|$i|1|+
+jumpif $i|<|3|loop|m
+end

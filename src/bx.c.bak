@@ -1,0 +1,278 @@
+// BoxedLANG C runner, transpiler, and compiler driver.
+// Build: make
+// Usage:
+//   ./bx run file.bx
+//   ./bx transpile file.bx -o out.c
+//   ./bx compile file.bx -o program
+//   ./bx emit-c file.bx
+
+#define _POSIX_C_SOURCE 200809L
+#include <ctype.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+
+#ifndef BX_RUNTIME_PATH
+#define BX_RUNTIME_PATH "src/bx.c"
+#endif
+
+typedef struct { char *name; char *value; } Box;
+typedef struct { Box *items; size_t len, cap; } Boxes;
+typedef struct { char *name; int line; } Mark;
+typedef struct { Mark *items; size_t len, cap; } Marks;
+typedef struct {
+    char **lines;
+    char **comments;
+    int count;
+    Boxes boxes;
+    Marks marks;
+    int halted;
+} Program;
+
+static char *xstrdup(const char *s) { size_t n = strlen(s) + 1; char *p = malloc(n); if (!p) { perror("malloc"); exit(1); } memcpy(p, s, n); return p; }
+static char *xstrndup(const char *s, size_t n) { char *p = malloc(n + 1); if (!p) { perror("malloc"); exit(1); } memcpy(p, s, n); p[n] = 0; return p; }
+static void *xrealloc(void *p, size_t n) { void *q = realloc(p, n); if (!q) { perror("realloc"); exit(1); } return q; }
+
+static char *trim(char *s) { while (isspace((unsigned char)*s)) s++; char *e = s + strlen(s); while (e > s && isspace((unsigned char)e[-1])) *--e = 0; return s; }
+static int streqi(const char *a, const char *b) { while (*a && *b) { if (tolower((unsigned char)*a++) != tolower((unsigned char)*b++)) return 0; } return *a == 0 && *b == 0; }
+static int is_number(const char *s) { if (*s == '-' || *s == '+') s++; if (!*s) return 0; while (*s) if (!isdigit((unsigned char)*s++)) return 0; return 1; }
+
+static char *strip_comment(const char *line) {
+    for (size_t i = 0; line[i]; i++) if (line[i] == '/' && line[i+1] == '/') return xstrndup(line, i);
+    return xstrdup(line);
+}
+
+static char **split_bars(const char *s, int *out_n) {
+    int cap = 8, n = 0; char **parts = malloc(sizeof(char*) * cap); if (!parts) exit(1);
+    const char *start = s;
+    for (const char *p = s;; p++) {
+        if (*p == '|' || *p == 0) {
+            if (n == cap) { cap *= 2; parts = xrealloc(parts, sizeof(char*) * cap); }
+            parts[n++] = xstrndup(start, (size_t)(p - start));
+            if (*p == 0) break;
+            start = p + 1;
+        }
+    }
+    *out_n = n; return parts;
+}
+static void free_parts(char **p, int n) { for (int i = 0; i < n; i++) free(p[i]); free(p); }
+
+static int box_index(Boxes *b, const char *name) { for (size_t i = 0; i < b->len; i++) if (!strcmp(b->items[i].name, name)) return (int)i; return -1; }
+static const char *box_get(Boxes *b, const char *name) { int i = box_index(b, name); return i >= 0 ? b->items[i].value : ""; }
+static void box_set(Boxes *b, const char *name, const char *value) {
+    int i = box_index(b, name);
+    if (i >= 0) { free(b->items[i].value); b->items[i].value = xstrdup(value); return; }
+    if (b->len == b->cap) { b->cap = b->cap ? b->cap * 2 : 16; b->items = xrealloc(b->items, sizeof(Box) * b->cap); }
+    b->items[b->len].name = xstrdup(name); b->items[b->len].value = xstrdup(value); b->len++;
+}
+static void box_del(Boxes *b, const char *name) {
+    int i = box_index(b, name); if (i < 0) return;
+    free(b->items[i].name); free(b->items[i].value);
+    memmove(&b->items[i], &b->items[i+1], sizeof(Box) * (b->len - (size_t)i - 1)); b->len--;
+}
+static void boxes_free(Boxes *b) { for (size_t i = 0; i < b->len; i++) { free(b->items[i].name); free(b->items[i].value); } free(b->items); }
+
+static void mark_add(Marks *m, const char *name, int line) {
+    if (m->len == m->cap) { m->cap = m->cap ? m->cap * 2 : 16; m->items = xrealloc(m->items, sizeof(Mark) * m->cap); }
+    m->items[m->len].name = xstrdup(name); m->items[m->len].line = line; m->len++;
+}
+static int mark_find(Marks *m, const char *name) { for (size_t i = 0; i < m->len; i++) if (!strcmp(m->items[i].name, name)) return m->items[i].line; return -1; }
+static void marks_free(Marks *m) { for (size_t i = 0; i < m->len; i++) free(m->items[i].name); free(m->items); }
+
+static int bx_var_char(unsigned char c) { return isalnum(c) || c == '_' || c == '-' || c == '?' || c == '#'; }
+
+static char *resolve(Boxes *boxes, const char *s) {
+    size_t cap = strlen(s) + 64, len = 0; char *out = malloc(cap); if (!out) exit(1); out[0] = 0;
+    for (size_t i = 0; s[i];) {
+        const char *rep = NULL; char *owned = NULL; char chbuf[2] = {0, 0};
+        if (s[i] == '\\' && s[i+1] == '/' && s[i+2] == ':') { rep = ":"; i += 3; }
+        else if (s[i] == ':' && s[i+1] == '$') { i++; continue; }
+        else if (s[i] == '$' && s[i+1] == '$') {
+            i += 2; size_t st = i; while (bx_var_char((unsigned char)s[i])) i++;
+            owned = xstrndup(s + st, i - st); rep = box_get(boxes, box_get(boxes, owned));
+        } else if (s[i] == '$') {
+            i++; size_t st = i; while (bx_var_char((unsigned char)s[i])) i++;
+            owned = xstrndup(s + st, i - st); rep = box_get(boxes, owned);
+        } else if (s[i] == '\\' && (s[i+1] == '(' || s[i+1] == ')')) {
+            i += 2; size_t st = i; while (bx_var_char((unsigned char)s[i])) i++;
+            owned = xstrndup(s + st, i - st); rep = box_get(boxes, owned);
+        } else { chbuf[0] = s[i++]; rep = chbuf; }
+        size_t rn = strlen(rep); if (len + rn + 1 > cap) { while (len + rn + 1 > cap) cap *= 2; out = xrealloc(out, cap); }
+        memcpy(out + len, rep, rn); len += rn; out[len] = 0; free(owned);
+    }
+    return out;
+}
+
+static long bx_int(Boxes *b, const char *s) { char *r = resolve(b, s); long v = strtol(r, NULL, 10); free(r); return v; }
+static int cmp_values(const char *left, const char *op, const char *right) {
+    if (!strcmp(op, "==")) return strcmp(left, right) == 0;
+    if (!strcmp(op, "!=")) return strcmp(left, right) != 0;
+    long a = strtol(left, NULL, 10), c = strtol(right, NULL, 10);
+    if (!strcmp(op, ">")) return a > c;
+    if (!strcmp(op, "<")) return a < c;
+    if (!strcmp(op, ">=")) return a >= c;
+    if (!strcmp(op, "<=")) return a <= c;
+    return 0;
+}
+static int eval_cond(Boxes *b, char **p, int n) {
+    if (n < 3) return 0;
+    char *l = resolve(b, p[0]), *op = p[1], *r = resolve(b, p[2]);
+    int ok = cmp_values(l, op, r); free(l); free(r); return ok;
+}
+
+static const char *canonical(const char *cmd) {
+    if (streqi(cmd,"b")) return "box";
+    if (streqi(cmd,"s")) return "say";
+    if (streqi(cmd,"a")) return "ask";
+    if (streqi(cmd,"m")) return "math";
+    if (streqi(cmd,"t")) return "test";
+    if (streqi(cmd,"i")) return "if";
+    if (streqi(cmd,"j")) return "jump";
+    if (streqi(cmd,"ji")) return "jumpif";
+    if (streqi(cmd,"d")) return "del";
+    if (streqi(cmd,"mark") || streqi(cmd,"mk")) return "premark";
+    if (streqi(cmd,"e")) return "end";
+    if (streqi(cmd,"cls")) return "clear";
+    return cmd;
+}
+
+static int exec_line(Program *pr, const char *raw, int pc);
+
+static int exec_command(Program *pr, const char *cmdline, int pc) {
+    char *line = strip_comment(cmdline); char *s = trim(line); if (!*s) { free(line); return pc + 1; }
+    char *space = s; while (*space && !isspace((unsigned char)*space)) space++;
+    char saved = *space; *space = 0; const char *cmd = canonical(s); char cmd_buf[32]; snprintf(cmd_buf, sizeof cmd_buf, "%s", cmd); cmd = cmd_buf; char *args = saved ? trim(space + 1) : space; *space = saved;
+
+    if (streqi(cmd,"box")) { int n; char **p = split_bars(args, &n); if (n >= 2) { char *name = resolve(&pr->boxes, p[0]); char *val = resolve(&pr->boxes, p[1]); box_set(&pr->boxes, name, val); free(name); free(val); } free_parts(p,n); }
+    else if (streqi(cmd,"say")) { int n; char **p = split_bars(args,&n); char *text = n ? resolve(&pr->boxes,p[0]) : xstrdup(""); puts(text); fflush(stdout); if (n >= 2) { long sec = bx_int(&pr->boxes,p[1]); if (sec > 0) { struct timespec ts = { sec, 0 }; nanosleep(&ts, NULL); } } free(text); free_parts(p,n); }
+    else if (streqi(cmd,"ask")) { char *r = resolve(&pr->boxes,args); char *last = strrchr(r, ' '); char *target = r; if (last) { *last = 0; printf("%s ", r); target = last + 1; } fflush(stdout); char buf[4096]; if (!fgets(buf,sizeof buf,stdin)) buf[0]=0; buf[strcspn(buf,"\r\n")]=0; box_set(&pr->boxes,target,buf); free(r); }
+    else if (streqi(cmd,"math")) { int n; char **p=split_bars(args,&n); if(n>=4){ long a=bx_int(&pr->boxes,p[1]), b=bx_int(&pr->boxes,p[2]), v=0; char *op=resolve(&pr->boxes,p[3]); if(!strcmp(op,"+"))v=a+b; else if(!strcmp(op,"-"))v=a-b; else if(!strcmp(op,"*")||streqi(op,"x"))v=a*b; else if(!strcmp(op,"/"))v=b? a/b:0; else if(!strcmp(op,"%"))v=b? a%b:0; free(op); char buf[64]; snprintf(buf,sizeof buf,"%ld",v); char *name=resolve(&pr->boxes,p[0]); box_set(&pr->boxes,name,buf); free(name);} free_parts(p,n); }
+    else if (streqi(cmd,"test")) { int n; char **p=split_bars(args,&n); if(n>=4){ char *cond[3] = { p[1], p[3], p[2] }; int ok=eval_cond(&pr->boxes,cond,3); char *val=resolve(&pr->boxes, ok ? (n>=5?p[4]:"1") : (n>=6?p[5]:"0")); char *name=resolve(&pr->boxes,p[0]); box_set(&pr->boxes,name,val); free(name); free(val);} free_parts(p,n); }
+    else if (streqi(cmd,"if")) { int n; char **p=split_bars(args,&n); if(n>=4 && eval_cond(&pr->boxes,p,3)){ size_t total=0; for(int i=3;i<n;i++) total += strlen(p[i])+2; char *nested=calloc(1,total+1); for(int i=3;i<n;i++){ if(i>3) strcat(nested, i==4 ? " " : "|"); strcat(nested,p[i]); } int npc=exec_line(pr,nested,pc); free(nested); free_parts(p,n); free(line); return npc==pc+1?pc+1:npc; } free_parts(p,n); }
+    else if (streqi(cmd,"jump")) { int n; char **p=split_bars(args,&n); if(n>=1){ char *target=resolve(&pr->boxes,p[0]); if(n>=2 && streqi(p[1],"m")){ int m=mark_find(&pr->marks,target); if(m>=0){ free(target); free_parts(p,n); free(line); return m; }} else if(is_number(target)) { int t=atoi(target)-1; if(t>=0 && t<pr->count){ free(target); free_parts(p,n); free(line); return t; }} free(target); } free_parts(p,n); }
+    else if (streqi(cmd,"jumpif")) { int n; char **p=split_bars(args,&n); if(n>=4 && eval_cond(&pr->boxes,p,3)){ char *target=resolve(&pr->boxes,p[3]); if(n>=5 && streqi(p[4],"m")){ int m=mark_find(&pr->marks,target); if(m>=0){ free(target); free_parts(p,n); free(line); return m; }} else if(is_number(target)) { int t=atoi(target)-1; if(t>=0&&t<pr->count){ free(target); free_parts(p,n); free(line); return t; }} free(target); } free_parts(p,n); }
+    else if (streqi(cmd,"del")) { char *name=resolve(&pr->boxes,args); box_del(&pr->boxes,name); free(name); }
+    else if (streqi(cmd,"clear")) { fputs("\033[2J\033[H", stdout); }
+    else if (streqi(cmd,"end")) { pr->halted = 1; free(line); return pr->count; }
+    free(line); return pc + 1;
+}
+static int exec_line(Program *pr, const char *raw, int pc) { return exec_command(pr, raw, pc); }
+
+static char *read_file(const char *path) {
+    FILE *f=fopen(path,"rb"); if(!f){ perror(path); exit(1); } fseek(f,0,SEEK_END); long n=ftell(f); rewind(f); char *buf=malloc((size_t)n+1); if(!buf)exit(1); if(fread(buf,1,(size_t)n,f)!=(size_t)n && ferror(f)){ perror(path); exit(1);} buf[n]=0; fclose(f); return buf;
+}
+static void program_load(Program *pr, const char *src) {
+    memset(pr,0,sizeof *pr); int cap=32; pr->lines=malloc(sizeof(char*)*cap); if(!pr->lines)exit(1);
+    const char *st=src; for(const char *p=src;;p++){ if(*p=='\n'||*p==0){ if(pr->count==cap){cap*=2;pr->lines=xrealloc(pr->lines,sizeof(char*)*cap);} size_t n=(size_t)(p-st); if(n&&st[n-1]=='\r')n--; pr->lines[pr->count++]=xstrndup(st,n); if(*p==0)break; st=p+1; }}
+    for(int i=0;i<pr->count;i++){ char *line=strip_comment(pr->lines[i]); char *s=trim(line); if(!*s){free(line);continue;} char *sp=s; while(*sp&&!isspace((unsigned char)*sp))sp++; char save=*sp; *sp=0; const char *cmd=canonical(s); char *args=save?trim(sp+1):sp; if(streqi(cmd,"premark")) mark_add(&pr->marks,args,i); free(line); }
+}
+static int program_run_source(const char *src) { Program pr; program_load(&pr,src); for(int pc=0; pc<pr.count && !pr.halted;) pc=exec_line(&pr,pr.lines[pc],pc); for(int i=0;i<pr.count;i++)free(pr.lines[i]); free(pr.lines); boxes_free(&pr.boxes); marks_free(&pr.marks); return 0; }
+
+static void c_string(FILE *out, const char *s) { fputc('"',out); for(;*s;s++){ unsigned char c=*s; if(c=='\\'||c=='"') fprintf(out,"\\%c",c); else if(c=='\n') fputs("\\n",out); else if(c=='\r') fputs("\\r",out); else if(c=='\t') fputs("\\t",out); else if(c<32||c>126) fprintf(out,"\\x%02x",c); else fputc(c,out);} fputc('"',out); }
+static int emit_c(const char *src, const char *outpath) {
+    char *runtime = read_file(BX_RUNTIME_PATH); FILE *out = outpath ? fopen(outpath,"wb") : stdout; if(!out){ perror(outpath); free(runtime); return 1; }
+    fputs("#define BX_EMBEDDED_SOURCE 1\n", out); fputs(runtime, out); fputs("\n#ifdef main\n#undef main\n#endif\n", out);
+    fputs("int main(void){ const char *src = ", out); c_string(out, src); fputs("; return program_run_source(src); }\n", out);
+    if(outpath) fclose(out);
+    free(runtime);
+    return 0;
+}
+
+#ifndef BX_EMBEDDED_SOURCE
+typedef struct { const char *name; const char *cc; const char *objcopy; const char *cpu; } Target;
+static const Target targets[] = {
+    {"native", "cc", "objcopy", "host default"},
+    {"x86_64", "x86_64-linux-gnu-gcc", "x86_64-linux-gnu-objcopy", "AMD64 / x86-64"},
+    {"i386", "i686-linux-gnu-gcc", "i686-linux-gnu-objcopy", "Intel 386+ 32-bit"},
+    {"i686", "i686-linux-gnu-gcc", "i686-linux-gnu-objcopy", "Intel Pentium Pro+ 32-bit"},
+    {"aarch64", "aarch64-linux-gnu-gcc", "aarch64-linux-gnu-objcopy", "ARM 64-bit"},
+    {"armv7", "arm-linux-gnueabihf-gcc", "arm-linux-gnueabihf-objcopy", "ARMv7 hard-float"},
+    {"arm", "arm-linux-gnueabi-gcc", "arm-linux-gnueabi-objcopy", "ARM 32-bit soft-float"},
+    {"riscv64", "riscv64-linux-gnu-gcc", "riscv64-linux-gnu-objcopy", "RISC-V 64-bit"},
+    {"riscv32", "riscv32-linux-gnu-gcc", "riscv32-linux-gnu-objcopy", "RISC-V 32-bit"},
+    {"mips", "mips-linux-gnu-gcc", "mips-linux-gnu-objcopy", "MIPS 32-bit big-endian"},
+    {"mipsel", "mipsel-linux-gnu-gcc", "mipsel-linux-gnu-objcopy", "MIPS 32-bit little-endian"},
+    {"mips64", "mips64-linux-gnuabi64-gcc", "mips64-linux-gnuabi64-objcopy", "MIPS 64-bit big-endian"},
+    {"powerpc", "powerpc-linux-gnu-gcc", "powerpc-linux-gnu-objcopy", "PowerPC 32-bit"},
+    {"ppc64", "powerpc64-linux-gnu-gcc", "powerpc64-linux-gnu-objcopy", "PowerPC 64-bit big-endian"},
+    {"ppc64le", "powerpc64le-linux-gnu-gcc", "powerpc64le-linux-gnu-objcopy", "PowerPC 64-bit little-endian"},
+    {"s390x", "s390x-linux-gnu-gcc", "s390x-linux-gnu-objcopy", "IBM z/Architecture"},
+    {"sparc64", "sparc64-linux-gnu-gcc", "sparc64-linux-gnu-objcopy", "SPARC 64-bit"},
+    {"loongarch64", "loongarch64-linux-gnu-gcc", "loongarch64-linux-gnu-objcopy", "LoongArch 64-bit"},
+    {NULL, NULL, NULL, NULL}
+};
+
+static const Target *find_target(const char *name) {
+    for (int i = 0; targets[i].name; i++) if (!strcmp(targets[i].name, name)) return &targets[i];
+    return NULL;
+}
+static void list_targets(void) {
+    puts("known targets:");
+    for (int i = 0; targets[i].name; i++) printf("  %-12s %-34s %s\n", targets[i].name, targets[i].cc, targets[i].cpu);
+}
+static void shell_quote(char *out, size_t cap, const char *s) {
+    size_t n = 0;
+    if (n + 1 < cap) out[n++] = '\'';
+    for (; *s && n + 5 < cap; s++) {
+        if (*s == '\'') { memcpy(out + n, "'\\''", 4); n += 4; }
+        else out[n++] = *s;
+    }
+    if (n + 1 < cap) out[n++] = '\'';
+    out[n] = 0;
+}
+static int emit_temp_c(const char *src, char *tmp, size_t tmp_cap) {
+    snprintf(tmp, tmp_cap, "/tmp/bx_%ld_%ld.c", (long)getpid(), (long)time(NULL));
+    return emit_c(src, tmp);
+}
+static int run_backend(const char *src, const char *mode, const char *out, const char *target_name, int keep_c) {
+    const Target *t = find_target(target_name ? target_name : "native");
+    if (!t) { fprintf(stderr, "unknown target: %s\n", target_name); list_targets(); return 2; }
+    if (!out) { fprintf(stderr, "%s needs -o OUT\n", mode); return 2; }
+
+    char tmp_c[256], qcc[512], qin[512], qout[512], cmd[4096];
+    int rc = emit_temp_c(src, tmp_c, sizeof tmp_c); if (rc) return rc;
+    shell_quote(qcc, sizeof qcc, t->cc); shell_quote(qin, sizeof qin, tmp_c); shell_quote(qout, sizeof qout, out);
+
+    if (!strcmp(mode, "compile")) {
+        snprintf(cmd, sizeof cmd, "%s -x c -std=c99 -O2 -o %s %s", qcc, qout, qin);
+        rc = system(cmd);
+    } else if (!strcmp(mode, "asm")) {
+        snprintf(cmd, sizeof cmd, "%s -x c -std=c99 -O2 -S -o %s %s", qcc, qout, qin);
+        rc = system(cmd);
+    } else if (!strcmp(mode, "raw")) {
+        char tmp_obj[256], qtmp_obj[512], qobjcopy[512];
+        snprintf(tmp_obj, sizeof tmp_obj, "/tmp/bx_%ld_%ld.o", (long)getpid(), (long)time(NULL));
+        shell_quote(qtmp_obj, sizeof qtmp_obj, tmp_obj); shell_quote(qobjcopy, sizeof qobjcopy, t->objcopy);
+        snprintf(cmd, sizeof cmd, "%s -x c -std=c99 -O2 -c -o %s %s", qcc, qtmp_obj, qin);
+        rc = system(cmd);
+        if (!rc) { snprintf(cmd, sizeof cmd, "%s -O binary %s %s", qobjcopy, qtmp_obj, qout); rc = system(cmd); }
+        remove(tmp_obj);
+    } else rc = 2;
+
+    if (rc) fprintf(stderr, "%s backend failed for target '%s' using %s\n", mode, t->name, t->cc);
+    if (!keep_c) remove(tmp_c);
+    return rc;
+}
+
+static void usage(void){ fprintf(stderr,"usage: bx run FILE | bx transpile FILE -o OUT.c | bx emit-c FILE | bx compile FILE -o OUT [--target T] | bx asm FILE -o OUT.s [--target T] | bx raw FILE -o OUT.bin [--target T] | bx targets\n"); }
+int main(int argc, char **argv) {
+    if(argc >= 2 && !strcmp(argv[1], "targets")) { list_targets(); return 0; }
+    if(argc < 3){ usage(); return 2; }
+    const char *mode=argv[1], *in=argv[2], *out=NULL, *target="native"; int keep_c=0;
+    for(int i=3;i<argc;i++) {
+        if(!strcmp(argv[i],"-o")&&i+1<argc) out=argv[++i];
+        else if(!strcmp(argv[i],"--target")&&i+1<argc) target=argv[++i];
+        else if(!strcmp(argv[i],"--keep-c")) keep_c=1;
+    }
+    char *src=read_file(in); int rc=0;
+    if(!strcmp(mode,"run")) rc=program_run_source(src);
+    else if(!strcmp(mode,"emit-c")) rc=emit_c(src,NULL);
+    else if(!strcmp(mode,"transpile")) { if(!out){ usage(); rc=2; } else rc=emit_c(src,out); }
+    else if(!strcmp(mode,"compile") || !strcmp(mode,"asm") || !strcmp(mode,"raw")) rc=run_backend(src,mode,out,target,keep_c);
+    else { usage(); rc=2; }
+    free(src); return rc;
+}
+#endif
