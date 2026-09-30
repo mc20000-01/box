@@ -376,6 +376,27 @@ static const char *canonical(const char *cmd) {
     return cmd;
 }
 
+/* Is this a command the interpreter actually has?
+ *
+ * A line whose first word is not in this list used to be dropped at load time
+ * with no message, so a typo was a silent no-op and a program that "worked"
+ * while doing nothing. It is now a load error naming the line.
+ */
+static int cmd_known(const char *cmd) {
+    static const char *const words[] = {
+        "box","say","ask","math","test","if","jump","jumpif","del","end",
+        "premark","clear","file","str","bxe","lib","umload","ui","high", NULL
+    };
+    for (int i = 0; words[i]; i++) if (streqi(cmd, words[i])) return 1;
+    /* The families that take a dot: high.gfx, high.snd, high.math, high.m3d,
+     * high.wifi. Anything under one of them is a real command even if a
+     * particular sub name turns out to be unknown, which the handler reports
+     * with its own list. */
+    if (strncmp(cmd, "high.", 5) == 0 || strncmp(cmd, "ui.", 3) == 0 ||
+        strncmp(cmd, "low.", 4) == 0) return 1;
+    return 0;
+}
+
 static int exec_line(Program *pr, const char *raw, int pc);
 static char *read_file(const char *path);
 static void program_load(Program *pr, const char *src);
@@ -2652,7 +2673,10 @@ static void program_load(Program *pr, const char *src) {
         else if(streqi(cmd,"box"))k=OP_BOX; else if(streqi(cmd,"say"))k=OP_SAY; else if(streqi(cmd,"math"))k=OP_MATH;
         else if(streqi(cmd,"test"))k=OP_TEST; else if(streqi(cmd,"if"))k=OP_IF; else if(streqi(cmd,"jump"))k=OP_JUMP;
         else if(streqi(cmd,"jumpif"))k=OP_JUMPIF; else if(streqi(cmd,"del"))k=OP_DEL; else if(streqi(cmd,"end"))k=OP_END;
-        else { free(line); continue; }
+        else if (!cmd_known(cmd)) {
+            fprintf(stderr, "line %d: unknown command '%s'\n", i+1, cmd);
+            free(line); continue; }
+        else { free(line); continue; }   /* a line-handled command, not an op */
         Op *o=calloc(1,sizeof(Op)); o->kind=k; o->parts=split_bars(args,&o->n); pr->ops[i]=o; free(line); }
 }
 static int program_run_source(const char *src) { Program pr; program_load(&pr,src); for(int pc=0; pc<pr.count && !pr.halted;) { Op *o=pr.ops?pr.ops[pc]:NULL; pc=o?exec_op(&pr,o,pc):exec_line(&pr,pr.lines[pc],pc); } program_free(&pr); return 0; }

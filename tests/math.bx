@@ -445,6 +445,131 @@ box mn_want|0.707107 0 0 -0.707107
 box mn_next|x_done
 jump mncheck|m
 
+// --- transcendental coverage ------------------------------------------
+// These had implementations but no test, so a sign error in any of them
+// would have gone unnoticed. Angles in radians unless the name says degrees.
+premark x_acos
+high.math.acos mn_got|1
+box mn_name|acos
+box mn_want|0
+box mn_next|x_asin
+jump mncheck|m
+
+premark x_asin
+high.math.asin mn_got|1
+box mn_name|asin
+box mn_want|1.5708
+box mn_next|x_atan
+jump mncheck|m
+
+premark x_atan
+high.math.atan mn_got|1
+box mn_name|atan
+box mn_want|0.785398
+box mn_next|x_sin
+jump mncheck|m
+
+premark x_sin
+high.math.sin mn_got|0
+box mn_name|sin
+box mn_want|0
+box mn_next|x_cos
+jump mncheck|m
+
+premark x_cos
+high.math.cos mn_got|0
+box mn_name|cos
+box mn_want|1
+box mn_next|x_tan
+jump mncheck|m
+
+premark x_tan
+high.math.tan mn_got|1
+box mn_name|tan
+box mn_want|1.55741
+box mn_next|x_sinh
+jump mncheck|m
+
+premark x_sinh
+high.math.sinh mn_got|1
+box mn_name|sinh
+box mn_want|1.1752
+box mn_next|x_cosh
+jump mncheck|m
+
+premark x_cosh
+high.math.cosh mn_got|1
+box mn_name|cosh
+box mn_want|1.54308
+box mn_next|x_tanh
+jump mncheck|m
+
+premark x_tanh
+high.math.tanh mn_got|1
+box mn_name|tanh
+box mn_want|0.761594
+box mn_next|x_log
+jump mncheck|m
+
+// log is natural log: ln(100) is not 2
+premark x_log
+high.math.log mn_got|100
+box mn_name|log-is-natural
+box mn_want|4.60517
+box mn_next|x_log2
+jump mncheck|m
+
+premark x_log2
+high.math.log2 mn_got|1024
+box mn_name|log2
+box mn_want|10
+box mn_next|x_log10
+jump mncheck|m
+
+premark x_log10
+high.math.log10 mn_got|1000
+box mn_name|log10
+box mn_want|3
+box mn_next|x_mmul
+jump mncheck|m
+
+// A matrix is one field of 16 numbers. A 4x4 identity multiplied by itself is
+// itself, which is a cheap way to prove the layout is not transposed.
+premark x_mmul
+box mm_I|1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1
+high.m3d.mmul mn_got|$mm_I|$mm_I
+box mn_name|mmul-identity
+box mn_want|1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1
+box mn_next|x_mrot
+jump mncheck|m
+
+// mrot is about an axis and returns a matrix; mvec applies it. Chained, they
+// turn (1,0,0) into (0,1,0), which is a 90 degree turn about +z.
+premark x_mrot
+high.m3d.mrot mn_m90|0 0 1|90
+high.m3d.mvec mn_got|$mn_m90|1 0 0
+box mn_name|mrot-mvec
+box mn_want|0 1 0
+box mn_next|x_mroty
+jump mncheck|m
+
+// 90 degrees about +y sends +z to +x.
+premark x_mroty
+high.m3d.mroty mn_my90|0 1 0|90
+high.m3d.mvec mn_got|$mn_my90|0 0 1
+box mn_name|mroty-mvec
+box mn_want|1 0 0
+box mn_next|x_qnorm
+jump mncheck|m
+
+// A unit quaternion normalises to itself; a scaled one divides through.
+premark x_qnorm
+high.m3d.qnorm mn_got|2 0 0 0
+box mn_name|qnorm
+box mn_want|1 0 0 0
+box mn_next|x_done
+jump mncheck|m
+
 premark x_done
 say math tests done, failures: $mathfail
 end
