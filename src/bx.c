@@ -110,6 +110,7 @@ static int bx_snd_wav(const char *p){ (void)p; return -1; }
 #include "bx_wifi.h"
 #include "bx_gfx.h"
 #include "bx_ui.h"
+#include "bx_bxvg.h"
 #include <stdarg.h>
 
 #include "bx_snd.h"
@@ -977,7 +978,7 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
             }
         }
         const char *fam = family;
-        if(!sub){ printf("ui commands: init | kinds|list | new|ID|KIND [parent] [W H] | build|BOX|file|PATH | spec|BOX | set|ID|field|val | get|ID|field | attach|FRAME|ID... | detach|FRAME|ID | list | layout|FRAME | dock|PANE | switch|PANE | render[|BOX] | ppm|PATH|BOX] | hit|X|Y|BOX | press|ID|0|1 | select|ID|0|1 | close|ID | pointer|X|Y|ACTION[BUTTON][BOX] | key|KEY|ACTION[BOX] | focus|ID[BOX]|next|prev | input|release | mathfn|list | drive|list|off | drive|ID|PROP|... | texture|ID|PATTERN|... | tween|ID|TARGET|PROP|FROM|TO|DUR|FN | tween|ID|to|V | tween|ID|cancel | tween|list | tweenfn|set|NAME|... | tweenfn|list | frame|once | frame|step|SECS | frame|fps|N | ease|FN|T...\n"); free_parts(p,n); free(substr); return pc+1; }
+        if(!sub){ printf("ui commands: init | kinds|list | new|ID|KIND [parent] [W H] | build|BOX|file|PATH | spec|BOX | set|ID|field|val | get|ID|field | attach|FRAME|ID... | detach|FRAME|ID | list | layout|FRAME | dock|PANE | switch|PANE | render[|BOX] | ppm|PATH|BOX] | hit|X|Y|BOX | press|ID|0|1 | select|ID|0|1 | close|ID | pointer|X|Y|ACTION[BUTTON][BOX] | key|KEY|ACTION[BOX] | focus|ID[BOX]|next|prev | input|release | mathfn|list | drive|list|off | drive|ID|PROP|... | texture|ID|PATTERN|... | tween|ID|TARGET|PROP|FROM|TO|DUR|FN | tween|ID|to|V | tween|ID|cancel | tween|list | tweenfn|set|NAME|... | tweenfn|list | frame|once | frame|step|SECS | frame|fps|N | ease|FN|T... | vg|reset | vg|size|W|H | vg|bg|#hex | vg load|BOX|file|PATH | vg dump|BOX | vg svg|BOX|file|PATH | vg add|NAME|type|... | vg set|NAME|field|val | vg list | vg frame ... | vg draw|X|Y|W|H | vg ppm|PATH|X|Y|W|H\n"); free_parts(p,n); free(substr); return pc+1; }
         if(streqi(sub,"init")){
             bx_ui_reset(); printf("ui: init ok\n"); fflush(stdout);
         }
@@ -1268,6 +1269,270 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
             bx_ui_element_t *e=bx_ui_find(p[0]);
             if(!e) fprintf(stderr,"ui layout: no frame %s\n",p[0]);
             else { bx_ui_layout_apply(p[0]); printf("ui: layout applied to %s (%d children)\n",p[0],e->child_count); fflush(stdout); }
+        }
+        else if(streqi(fam,"vg") && n>=1){
+            /* ui.vg.* - the vector document.
+             *
+             *   vg reset                empty document, 24x24
+             *   vg size|W|H             the document's own coordinate space
+             *   vg bg|#hex             a background, drawn behind the shapes
+             *   vg load|BOX|file|PATH   read a .bxvg or an .svg
+             *   vg dump|BOX             write the .bxvg back out
+             *   vg svg|BOX|file|PATH    write SVG
+             *   vg add|NAME|type|...    add a shape: rect|circle|ellipse|line|poly|path
+             *   vg set|NAME|field|val   x y w h cx cy r fill stroke opacity name
+             *   vg list                 every shape, with its geometry
+             *   vg frame add|NAME|FROM|COUNT
+             *   vg frame NAME|0         show a frame
+             *   vg frame list
+             *   vg anim|FPS|0           step frames on a timer
+             *   vg draw|X|Y|W|H[|box]   render into the framebuffer
+             *   vg ppm|PATH             render and write a PPM
+             */
+            if (streqi(p[0], "reset")) {
+                bx_vg_reset(bx_vg_get());
+                printf("ui vg: reset to 24x24\n");
+            }
+            else if (streqi(p[0], "size") && n>=3) {
+                bx_vg_doc_t *d = bx_vg_get();
+                d->w = (float)atof(p[1]);
+                d->h = (float)atof(p[2]);
+                printf("ui vg: document is %gx%g\n", d->w, d->h);
+            }
+            else if (streqi(p[0], "bg") && n>=2) {
+                bx_vg_doc_t *d = bx_vg_get();
+                d->bg = bx_gfx_parse_color(p[1]);
+                d->has_bg = 1;
+                printf("ui vg: background %s\n", p[1]);
+            }
+            else if (streqi(p[0], "load") && n>=2) {
+                bx_vg_doc_t *d = bx_vg_get();
+                char err[200] = {0};
+                long got = -1;
+                if (streqi(p[1], "file") && n>=3) {
+                    /* An .svg is detected by content, not by extension: a file
+                     * named .bxvg that came out of another tool should still
+                     * load. */
+                    FILE *probe = fopen(p[2], "rb");
+                    if (probe) {
+                        char head[256] = {0};
+                        size_t got_n = fread(head, 1, sizeof head - 1, probe);
+                        fclose(probe);
+                        head[got_n] = 0;
+                        if (strstr(head, "<svg")) {
+                            got = bx_vg_from_svg_readfile(p[2], err, sizeof err);
+                        } else {
+                            got = bx_vg_parse_file(p[2], err, sizeof err);
+                        }
+                    } else {
+                        snprintf(err, sizeof err, "cannot read %s", p[2]);
+                    }
+                } else {
+                    got = bx_vg_parse(box_get(&pr->boxes, p[1]), err, sizeof err);
+                }
+                if (got < 0) fprintf(stderr, "ui vg: %s\n", err[0] ? err : "load failed");
+                else printf("ui vg: loaded %ld shape(s), %dx%d\n", got,
+                            (int)bx_vg_get()->w, (int)bx_vg_get()->h);
+            }
+            else if (streqi(p[0], "dump") && n>=2) {
+                static char out[262144];
+                if (bx_vg_dump(bx_vg_get(), out, sizeof out) < 0)
+                    fprintf(stderr, "ui vg: dump failed\n");
+                else {
+                    char *nm = resolve(&pr->boxes, p[1]);
+                    box_set(&pr->boxes, nm, out);
+                    free(nm);
+                }
+            }
+            else if (streqi(p[0], "svg") && n>=2) {
+                static char out[1048576];
+                if (bx_vg_to_svg(bx_vg_get(), out, sizeof out) < 0)
+                    fprintf(stderr, "ui vg: svg failed\n");
+                else if (streqi(p[1], "file") && n>=3) {
+                    if (bx_vg_svg_file(bx_vg_get(), p[2]) != 0)
+                        fprintf(stderr, "ui vg: cannot write %s\n", p[2]);
+                    else printf("ui vg: wrote %s\n", p[2]);
+                } else {
+                    char *nm = resolve(&pr->boxes, p[1]);
+                    box_set(&pr->boxes, nm, out);
+                    free(nm);
+                }
+            }
+            else if (streqi(p[0], "add") && n>=3) {
+                bx_vg_doc_t *d = bx_vg_get();
+                int32_t si = bx_vg_shape_add(d, p[1]);
+                if (si < 0) fprintf(stderr, "ui vg: too many shapes (max %d)\n", BX_VG_MAX_SHAPES);
+                else {
+                    bx_vg_shape_t *sh = &d->shape[si];
+                    const char *ty = p[2];
+                    if (streqi(ty, "rect")) {
+                        sh->type = BX_VG_RECT;
+                        sh->x = n>3?(float)atof(p[3]):0; sh->y = n>4?(float)atof(p[4]):0;
+                        sh->w = n>5?(float)atof(p[5]):10; sh->h = n>6?(float)atof(p[6]):10;
+                    } else if (streqi(ty, "circle")) {
+                        sh->type = BX_VG_CIRCLE;
+                        float cx = n>3?(float)atof(p[3]):0, cy = n>4?(float)atof(p[4]):0;
+                        float r  = n>5?(float)atof(p[5]):5;
+                        sh->x = cx-r; sh->y = cy-r; sh->w = r*2; sh->h = r*2;
+                    } else if (streqi(ty, "ellipse")) {
+                        sh->type = BX_VG_ELLIPSE;
+                        float cx = n>3?(float)atof(p[3]):0, cy = n>4?(float)atof(p[4]):0;
+                        float rx = n>5?(float)atof(p[5]):5, ry = n>6?(float)atof(p[6]):5;
+                        sh->x = cx-rx; sh->y = cy-ry; sh->w = rx*2; sh->h = ry*2;
+                    } else if (streqi(ty, "line")) {
+                        sh->type = BX_VG_LINE;
+                        sh->x = n>3?(float)atof(p[3]):0; sh->y = n>4?(float)atof(p[4]):0;
+                        sh->x1 = n>5?(float)atof(p[5]):0; sh->y1 = n>6?(float)atof(p[6]):0;
+                    } else if (streqi(ty, "poly")) {
+                        sh->type = BX_VG_POLY;
+                        for (int i = 3; i + 1 < n; i += 2) {
+                            float pair[2] = { (float)atof(p[i]), (float)atof(p[i+1]) };
+                            if (i + 1 < n && p[i+1][0])
+                                bx_vg_path_cmd(sh, BX_VG_OP_LINE, pair, 2);
+                        }
+                    } else if (streqi(ty, "path")) {
+                        sh->type = BX_VG_PATH;
+                        /* vg add|NAME|path|d M0 0 L10 10 ... - the d string as
+                         * one field, so a path is one argument. */
+                        if (n > 3) bx_vg_parse_path_d(sh, p[3]);
+                    } else {
+                        fprintf(stderr, "ui vg add: unknown type '%s'\n", ty);
+                    }
+                    printf("ui vg: added %s as shape %d (%s)\n", p[1], sh->id, ty);
+                }
+            }
+            else if (streqi(p[0], "set") && n>=3) {
+                bx_vg_doc_t *d = bx_vg_get();
+                bx_vg_shape_t *sh = bx_vg_shape_find(d, p[1]);
+                if (!sh) fprintf(stderr, "ui vg set: no shape '%s'\n", p[1]);
+                else {
+                    const char *f = p[2];
+                    if (!strcmp(f,"x")) sh->x=(float)atof(p[3]);
+                    else if (!strcmp(f,"y")) sh->y=(float)atof(p[3]);
+                    else if (!strcmp(f,"w")) sh->w=(float)atof(p[3]);
+                    else if (!strcmp(f,"h")) sh->h=(float)atof(p[3]);
+                    else if (!strcmp(f,"cx")) sh->x=(float)atof(p[3])-sh->w/2;
+                    else if (!strcmp(f,"cy")) sh->y=(float)atof(p[3])-sh->h/2;
+                    else if (!strcmp(f,"x1")) sh->x1=(float)atof(p[3]);
+                    else if (!strcmp(f,"y1")) sh->y1=(float)atof(p[3]);
+                    /* "none" is the word for "no paint here", and it has to be
+                     * the word: parsing it as a color gives black, so a shape
+                     * asked to have no fill gets a black one. */
+                    else if (!strcmp(f,"fill")) {
+                        uint32_t c = bx_gfx_parse_color(p[3]);
+                        sh->fill = c;
+                        sh->has_fill = streqi(p[3], "none") ? 0 : 1;
+                    }
+                    else if (!strcmp(f,"stroke")) {
+                        uint32_t c = bx_gfx_parse_color(p[3]);
+                        sh->stroke = c;
+                        sh->has_stroke = streqi(p[3], "none") ? 0 : 1;
+                    }
+                    else if (!strcmp(f,"opacity")) sh->opacity=(float)atof(p[3]);
+                    else if (!strcmp(f,"sw")) sh->stroke_w=(float)atof(p[3]);
+                    else if (!strcmp(f,"closed")) sh->closed=(char)(atoi(p[3])!=0);
+                    else if (!strcmp(f,"name")) snprintf(sh->name,sizeof sh->name,"%s",p[3]);
+                    else if (!strcmp(f,"type")) {
+                        if (streqi(p[3],"rect")) sh->type=BX_VG_RECT;
+                        else if (streqi(p[3],"circle")) sh->type=BX_VG_CIRCLE;
+                        else if (streqi(p[3],"ellipse")) sh->type=BX_VG_ELLIPSE;
+                        else if (streqi(p[3],"line")) sh->type=BX_VG_LINE;
+                        else if (streqi(p[3],"poly")) sh->type=BX_VG_POLY;
+                        else if (streqi(p[3],"path")) sh->type=BX_VG_PATH;
+                    }
+                    else fprintf(stderr, "ui vg set: unknown field '%s'\n", f);
+                    printf("ui vg: %s.%s = %s\n", p[1], f, p[3]);
+                }
+            }
+            else if (streqi(p[0], "list")) {
+                bx_vg_doc_t *d = bx_vg_get();
+                printf("ui vg: %dx%d, %d shape(s), %d frame(s)\n",
+                       (int)d->w, (int)d->h, d->nshape, d->nframe);
+                for (int32_t i = 0; i < d->nshape; i++) {
+                    bx_vg_shape_t *sh = &d->shape[i];
+                    const char *ty = sh->type==BX_VG_RECT?"rect":
+                                     sh->type==BX_VG_CIRCLE?"circle":
+                                     sh->type==BX_VG_ELLIPSE?"ellipse":
+                                     sh->type==BX_VG_LINE?"line":
+                                     sh->type==BX_VG_POLY?"poly":
+                                     sh->type==BX_VG_PATH?"path":"text";
+                    printf("  %d %-12s %-6s x=%g y=%g w=%g h=%g fill=%s stroke=%s\n",
+                           sh->id, sh->name[0]?sh->name:"-", ty,
+                           sh->x, sh->y, sh->w, sh->h,
+                           sh->has_fill?"yes":"no", sh->has_stroke?"yes":"no");
+                }
+                for (int32_t i = 0; i < d->nframe; i++)
+                    printf("  frame %d %-12s shapes %d..%d\n", i,
+                           d->frame[i].name, d->frame[i].first,
+                           d->frame[i].first + d->frame[i].count - 1);
+            }
+            else if (streqi(p[0], "frame") && n>=2) {
+                bx_vg_doc_t *d = bx_vg_get();
+                if (streqi(p[1], "add") && n>=3) {
+                    int32_t fi = bx_vg_frame_add(d, p[2]);
+                    if (n > 3) d->frame[fi].first = atoi(p[3]);
+                    if (n > 4) d->frame[fi].count = atoi(p[4]);
+                    else d->frame[fi].count = d->nshape - d->frame[fi].first;
+                    if (d->nframe == 1) bx_vg_frame_set(d, 0);
+                    printf("ui vg: frame %d '%s' shows %d shape(s)\n", fi, p[2],
+                           d->frame[fi].count);
+                } else if (streqi(p[1], "list")) {
+                    for (int32_t i = 0; i < d->nframe; i++)
+                        printf("  frame %d %-12s %d..%d%s\n", i, d->frame[i].name,
+                               d->frame[i].first,
+                               d->frame[i].first + d->frame[i].count - 1,
+                               i == d->cur_frame ? "  (showing)" : "");
+                } else if (streqi(p[1], "anim") && n>=2) {
+                    /* frame|anim|FPS is handled by the frame step; here it is
+                     * just turned on so the next frame advances. */
+                    bx_vg_anim_fps(d, (float)atof(p[1]));
+                    printf("ui vg: animating at %g fps\n", (float)atof(p[1]));
+                } else {
+                    int32_t fi = bx_vg_frame_find(d, p[1]);
+                    if (fi < 0 && !strcmp(p[1], "next"))
+                        fi = (d->cur_frame + 1) % (d->nframe ? d->nframe : 1);
+                    if (fi < 0) fprintf(stderr, "ui vg frame: no frame '%s'\n", p[1]);
+                    else { bx_vg_frame_set(d, fi); printf("ui vg: frame %d '%s'\n", fi, p[1]); }
+                }
+            }
+            else if((streqi(p[0], "draw") || streqi(p[0], "ppm")) && n>=1) {
+                if (!streqi(box_get(&pr->boxes,"lib_active_gfx"),"1"))
+                    fprintf(stderr,"ui vg: gfx library not loaded\n");
+                else {
+                    bx_vg_fb_t *fb = bx_gfx_fb_get();
+                    bx_vg_doc_t *d = bx_vg_get();
+                    if (!fb || !fb->pixels) fprintf(stderr,"ui vg: no framebuffer\n");
+                    else {
+                        int x=0,y=0,w=(int)d->w,h=(int)d->h;
+                        if (streqi(p[0],"draw")) {
+                            if (n>1) x=atoi(p[1]); if (n>2) y=atoi(p[2]);
+                            if (n>3) w=atoi(p[3]); if (n>4) h=atoi(p[4]);
+                        } else {
+                            /* vg ppm|PATH|X|Y|W|H */
+                            if (n>1) { const char *nm=resolve(&pr->boxes,p[1]);
+                                       bx_gfx_fb_set_size(w,h);
+                                       fb = bx_gfx_fb_get(); free(nm); }
+                            if (n>2) x=atoi(p[2]); if (n>3) y=atoi(p[3]);
+                            if (n>4) w=atoi(p[4]); if (n>5) h=atoi(p[5]);
+                        }
+                        int drawn = bx_vg_render(fb, d, x, y, w, h, BX_VG_FIT_CONTAIN);
+                        printf("ui vg: drew %d shape(s)\n", drawn);
+                        if (streqi(p[0],"ppm")) {
+                            const char *nm = resolve(&pr->boxes, p[1]);
+                            if (bx_gfx_ppm(nm) != 0) fprintf(stderr,"ui vg: cannot write %s\n", nm);
+                            else printf("ui vg: wrote %s\n", nm);
+                            free(nm);
+                        }
+                    }
+                }
+            }
+            else {
+                printf("ui vg: reset | size|W|H | bg|#hex | load|BOX|file|PATH | dump|BOX | "
+                       "svg|BOX|file|PATH | add|NAME|type|... | set|NAME|field|val | list | "
+                       "frame add|NAME|FROM|COUNT | frame NAME | frame list | frame anim|FPS | "
+                       "draw|X|Y|W|H | ppm|PATH|X|Y|W|H\n");
+            }
+            fflush(stdout);
         }
         else if((streqi(fam,"build") || streqi(fam,"spec")) && n>=1){
             /* build reads a spec; spec writes one back. Both take a box name,
@@ -1576,7 +1841,7 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
             }
             printf("\n"); fflush(stdout);
         }
-        else { printf("ui commands: init | kinds|list | new|ID|KIND [parent] [W H] | build|BOX|file|PATH | spec|BOX | set|ID|field|val | get|ID|field | attach|FRAME|ID... | detach|FRAME|ID | list | layout|FRAME | dock|PANE | switch|PANE | render[|BOX] | ppm|PATH|BOX] | hit|X|Y|BOX | press|ID|0|1 | select|ID|0|1 | close|ID | pointer|X|Y|ACTION[BUTTON][BOX] | key|KEY|ACTION[BOX] | focus|ID[BOX]|next|prev | input|release | mathfn|list | drive|list|off | drive|ID|PROP|... | texture|ID|PATTERN|... | tween|ID|TARGET|PROP|FROM|TO|DUR|FN | tween|ID|to|V | tween|ID|cancel | tween|list | tweenfn|set|NAME|... | tweenfn|list | frame|once | frame|step|SECS | frame|fps|N | ease|FN|T...\n"); }
+        else { printf("ui commands: init | kinds|list | new|ID|KIND [parent] [W H] | build|BOX|file|PATH | spec|BOX | set|ID|field|val | get|ID|field | attach|FRAME|ID... | detach|FRAME|ID | list | layout|FRAME | dock|PANE | switch|PANE | render[|BOX] | ppm|PATH|BOX] | hit|X|Y|BOX | press|ID|0|1 | select|ID|0|1 | close|ID | pointer|X|Y|ACTION[BUTTON][BOX] | key|KEY|ACTION[BOX] | focus|ID[BOX]|next|prev | input|release | mathfn|list | drive|list|off | drive|ID|PROP|... | texture|ID|PATTERN|... | tween|ID|TARGET|PROP|FROM|TO|DUR|FN | tween|ID|to|V | tween|ID|cancel | tween|list | tweenfn|set|NAME|... | tweenfn|list | frame|once | frame|step|SECS | frame|fps|N | ease|FN|T... | vg|reset | vg|size|W|H | vg|bg|#hex | vg load|BOX|file|PATH | vg dump|BOX | vg svg|BOX|file|PATH | vg add|NAME|type|... | vg set|NAME|field|val | vg list | vg frame ... | vg draw|X|Y|W|H | vg ppm|PATH|X|Y|W|H\n"); }
 ui_done:
         free_parts(p,n); free(substr);
     }
