@@ -336,7 +336,7 @@ umload require|sound|f_snd_render1
 premark f_snd_render1
 str fr_n|len|$sn_out
 box fr_got|1
-jumpif $fr_n|>|0|f_snd_ok
+jumpif $fr_n|>|0|f_snd_ok|m
 box fr_got|0
 premark f_snd_ok
 box fr_name|snd-render-samples

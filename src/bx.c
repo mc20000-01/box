@@ -831,7 +831,8 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
         else if(n>=2 && streqi(p[0],"load")){
             if(streqi(p[1],"wifi")){ bx_wifi_init(); box_set(&pr->boxes,"lib_active_wifi","1"); printf("lib: wifi loaded\n"); fflush(stdout); }
             else if(streqi(p[1],"gfx")){ box_set(&pr->boxes,"lib_active_gfx","1"); printf("lib: gfx loaded\n"); fflush(stdout); }
-            else if(streqi(p[1],"snd")){ bx_snd_init(0); box_set(&pr->boxes,"lib_active_snd","1"); printf("lib: snd loaded\n"); fflush(stdout); }
+            else if(streqi(p[1],"snd")){ if(!streqi(box_get(&pr->boxes,"lib_active_snd"),"1")) bx_snd_init(0);
+                                        box_set(&pr->boxes,"lib_active_snd","1"); printf("lib: snd loaded\n"); fflush(stdout); }
             else if(streqi(p[1],"math")){ box_set(&pr->boxes,"lib_active_math","1"); printf("lib: math loaded\n"); fflush(stdout); }
             else { fprintf(stderr,"lib: '%s' is not compiled into this build (available: wifi, gfx, snd, math)\n",p[1]); fflush(stderr); }
         }
@@ -1180,60 +1181,64 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
     else if (!strncmp(cmd,"high.snd.",9)) {
         if(streqi(box_get(&pr->boxes,"lib_active_snd"),"1")){
             const char *sub=cmd+9; int n; char **p=split_bars(args,&n);
+
+            int *pown=(int*)calloc((size_t)(n?n:1),sizeof(int));
+            const char **q=(const char**)calloc((size_t)(n?n:1),sizeof *q);
+            for(int iq=0;iq<n;iq++){ Res gg=rfast(&pr->boxes,p[iq]); q[iq]=gg.ptr; pown[iq]=gg.owned; }
             double defA=atof(box_get(&pr->boxes,"snd_env_a")); if(defA<=0) defA=0.005;
             double defD=atof(box_get(&pr->boxes,"snd_env_d")); if(defD<0)  defD=0.05;
             double defS=atof(box_get(&pr->boxes,"snd_env_s")); if(defS<0)  defS=0.6;
             double defR=atof(box_get(&pr->boxes,"snd_env_r")); if(defR<0)  defR=0.05;
-            if(streqi(sub,"init")){ if(n>=2) bx_snd_init((uint32_t)strtoul(p[1],NULL,10)); else bx_snd_init(0);
+            if(streqi(sub,"init")){ if(n>=2) bx_snd_init((uint32_t)strtoul(q[1],NULL,10)); else bx_snd_init(0);
                 printf("high.snd: rate=%u\n",bx_snd_rate()); fflush(stdout); }
-            else if(streqi(sub,"rate") && n>=1){ char buf[32]; snprintf(buf,sizeof buf,"%u",bx_snd_rate()); gfx_out(pr,p[0],buf); }
-            else if(streqi(sub,"samples") && n>=1){ char buf[32]; snprintf(buf,sizeof buf,"%u",bx_snd_samples()); gfx_out(pr,p[0],buf); }
-            else if(streqi(sub,"voices") && n>=1){ char buf[32]; snprintf(buf,sizeof buf,"%d",bx_snd_voice_count()); gfx_out(pr,p[0],buf); }
-            else if(streqi(sub,"freq") && n>=2){ int m=(int)strtol(p[1],NULL,10); char buf[32]; snprintf(buf,sizeof buf,"%.3f",bx_snd_note_freq(m)); gfx_out(pr,p[0],buf); }
-            else if(streqi(sub,"midi") && n>=2){ int m=bx_snd_note_from_name(p[1]); char buf[32]; snprintf(buf,sizeof buf,"%d",m); gfx_out(pr,p[0],buf); }
+            else if(streqi(sub,"rate") && n>=1){ char buf[32]; snprintf(buf,sizeof buf,"%u",bx_snd_rate()); gfx_out(pr,q[0],buf); }
+            else if(streqi(sub,"samples") && n>=1){ char buf[32]; snprintf(buf,sizeof buf,"%u",bx_snd_samples()); gfx_out(pr,q[0],buf); }
+            else if(streqi(sub,"voices") && n>=1){ char buf[32]; snprintf(buf,sizeof buf,"%d",bx_snd_voice_count()); gfx_out(pr,q[0],buf); }
+            else if(streqi(sub,"freq") && n>=2){ int m=(int)strtol(q[1],NULL,10); char buf[32]; snprintf(buf,sizeof buf,"%.3f",bx_snd_note_freq(m)); gfx_out(pr,q[0],buf); }
+            else if(streqi(sub,"midi") && n>=2){ int m=bx_snd_note_from_name(q[1]); char buf[32]; snprintf(buf,sizeof buf,"%d",m); gfx_out(pr,q[0],buf); }
             else if(streqi(sub,"env")){
-                if(n>=5){ box_set(&pr->boxes,"snd_env_a",p[1]); box_set(&pr->boxes,"snd_env_d",p[2]);
-                          box_set(&pr->boxes,"snd_env_s",p[3]); box_set(&pr->boxes,"snd_env_r",p[4]);
-                          printf("high.snd env %s %s %s %s\n",p[1],p[2],p[3],p[4]); }
+                if(n>=5){ box_set(&pr->boxes,"snd_env_a",q[1]); box_set(&pr->boxes,"snd_env_d",q[2]);
+                          box_set(&pr->boxes,"snd_env_s",q[3]); box_set(&pr->boxes,"snd_env_r",q[4]);
+                          printf("high.snd env %s %s %s %s\n",q[1],q[2],q[3],q[4]); }
                 else printf("high.snd env: %s %s %s %s\n",(defA>0?"0.005":"0"),"0.05","0.6","0.05");
                 fflush(stdout);
             }
             else if(streqi(sub,"tone") && n>=3){
-                double freq=atof(p[1]), dur=atof(p[2]);
-                bx_snd_wave_t w=snd_wave(n>=4?p[3]:"",BX_SND_WAVE_SINE);
-                double vol=n>=5?atof(p[4]):0.5;
-                double a=n>=6?atof(p[5]):defA, d=n>=7?atof(p[6]):defD;
-                double s=n>=8?atof(p[7]):defS, r=n>=9?atof(p[8]):defR;
+                double freq=atof(q[1]), dur=atof(q[2]);
+                bx_snd_wave_t w=snd_wave(n>=4?q[3]:"",BX_SND_WAVE_SINE);
+                double vol=n>=5?atof(q[4]):0.5;
+                double a=n>=6?atof(q[5]):defA, d=n>=7?atof(q[6]):defD;
+                double s=n>=8?atof(q[7]):defS, r=n>=9?atof(q[8]):defR;
                 int rc=bx_snd_tone(w,freq,vol,dur,a,d,s,r);
-                gfx_out(pr,p[0],rc==0?"ok":"err");
+                gfx_out(pr,q[0],rc==0?"ok":"err");
             }
             else if(streqi(sub,"note") && n>=3){
-                int midi=(int)strtol(p[1],NULL,10); double dur=atof(p[2]);
-                bx_snd_wave_t w=snd_wave(n>=4?p[3]:"",BX_SND_WAVE_SINE);
-                double vol=n>=5?atof(p[4]):0.5;
-                double a=n>=6?atof(p[5]):defA, d=n>=7?atof(p[6]):defD;
-                double s=n>=8?atof(p[7]):defS, r=n>=9?atof(p[8]):defR;
+                int midi=(int)strtol(q[1],NULL,10); double dur=atof(q[2]);
+                bx_snd_wave_t w=snd_wave(n>=4?q[3]:"",BX_SND_WAVE_SINE);
+                double vol=n>=5?atof(q[4]):0.5;
+                double a=n>=6?atof(q[5]):defA, d=n>=7?atof(q[6]):defD;
+                double s=n>=8?atof(q[7]):defS, r=n>=9?atof(q[8]):defR;
                 int rc=bx_snd_note(w,midi,vol,dur,a,d,s,r);
-                gfx_out(pr,p[0],rc==0?"ok":"err");
+                gfx_out(pr,q[0],rc==0?"ok":"err");
             }
             else if(streqi(sub,"melody") && n>=3){
-                double dur=atof(p[2]);
-                bx_snd_wave_t w=snd_wave(n>=4?p[3]:"",BX_SND_WAVE_SINE);
-                double vol=n>=5?atof(p[4]):0.5;
-                double off=n>=6?atof(p[5]):0.0;
-                double a=n>=7?atof(p[6]):defA, d=n>=8?atof(p[7]):defD;
-                double s=n>=9?atof(p[8]):defS, r=n>=10?atof(p[9]):defR;
-                int rc=bx_snd_melody(p[1],dur,w,vol,off,a,d,s,r);
-                char buf[16]; snprintf(buf,sizeof buf,"%d",rc); gfx_out(pr,p[0],buf);
+                double dur=atof(q[2]);
+                bx_snd_wave_t w=snd_wave(n>=4?q[3]:"",BX_SND_WAVE_SINE);
+                double vol=n>=5?atof(q[4]):0.5;
+                double off=n>=6?atof(q[5]):0.0;
+                double a=n>=7?atof(q[6]):defA, d=n>=8?atof(q[7]):defD;
+                double s=n>=9?atof(q[8]):defS, r=n>=10?atof(q[9]):defR;
+                int rc=bx_snd_melody(q[1],dur,w,vol,off,a,d,s,r);
+                char buf[16]; snprintf(buf,sizeof buf,"%d",rc); gfx_out(pr,q[0],buf);
             }
-            else if(streqi(sub,"render") && n>=1){ char buf[32]; snprintf(buf,sizeof buf,"%u",bx_snd_render()); gfx_out(pr,p[0],buf); }
+            else if(streqi(sub,"render") && n>=1){ char buf[32]; snprintf(buf,sizeof buf,"%u",bx_snd_render()); gfx_out(pr,q[0],buf); }
             else if(streqi(sub,"clear")){ bx_snd_clear(); printf("high.snd: cleared\n"); fflush(stdout); }
-            else if(streqi(sub,"wav") && n>=2){ int rc=bx_snd_wav(p[1]); gfx_out(pr,p[0],rc==0?"ok":"err"); }
+            else if(streqi(sub,"wav") && n>=2){ int rc=bx_snd_wav(q[1]); gfx_out(pr,q[0],rc==0?"ok":"err"); }
             else if(streqi(sub,"info") && n>=1){
                 char buf[96];
                 snprintf(buf,sizeof buf,"rate=%u voices=%d samples=%u used=%u",
                          bx_snd_rate(),bx_snd_voice_count(),bx_snd_samples(),bx_snd_samples());
-                gfx_out(pr,p[0],buf);
+                gfx_out(pr,q[0],buf);
             }
             else { printf("high.snd commands:\n");
                 printf("  init|rate | rate|BOX | samples|BOX | voices|BOX\n");
@@ -1241,6 +1246,8 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                 printf("  tone|BOX|hz|sec|wave|vol | note|BOX|midi|sec|wave|vol\n");
                 printf("  melody|BOX|names|sec|wave|vol|off\n");
                 printf("  render|BOX | wav|BOX|path | clear\n"); }
+            for(int iq=0;iq<n;iq++) if(pown[iq]) free((char*)q[iq]);
+            free(pown); free(q);
             free_parts(p,n);
         } else { fprintf(stderr,"snd library not loaded: use 'lib load|snd'\n"); fflush(stderr); }
     }

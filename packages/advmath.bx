@@ -75,8 +75,12 @@ end
 
 premark d_isodd
 math m_r|$m_a|2|%
-jumpif $m_r|==|0|d_even|m
+jumpif $m_r|==|0|d_notodd|m
 box m_out|1
+end
+
+premark d_notodd
+box m_out|0
 end
 
 premark d_neg
