@@ -345,6 +345,57 @@ file data|read|$fh|10
 box ck_name|file-read
 box ck_got|$data
 box ck_want|abc
+box ck_next|t_test_true
+jump check|m
+
+premark t_test_true
+test r|10|>|5|YES|NO
+box ck_name|test-true-branch
+box ck_got|$r
+box ck_want|YES
+box ck_next|t_test_false
+jump check|m
+
+premark t_test_false
+test r|10|>|50|YES|NO
+box ck_name|test-false-branch
+box ck_got|$r
+box ck_want|NO
+box ck_next|t_test_eq
+jump check|m
+
+premark t_test_eq
+test r|5|===|5|Y|N
+box ck_name|test-equal
+box ck_got|$r
+box ck_want|Y
+box ck_next|t_test_default
+jump check|m
+
+// With no yes/no pair, a true condition is 1. The condition order is
+// left|op|right, which is the one that got transposed in an old build
+// and made every result the false branch.
+premark t_test_default
+test r|5|===|5
+box ck_name|test-default-true
+box ck_got|$r
+box ck_want|1
+box ck_next|t_test_ne
+jump check|m
+
+premark t_test_ne
+test r|5|!==|5|Y|N
+box ck_name|test-not-equal
+box ck_got|$r
+box ck_want|N
+box ck_next|t_test_numeric
+jump check|m
+
+premark t_test_numeric
+test r|100|>|9|Y|N
+box ck_name|test-numeric-compare
+box ck_got|$r
+box ck_want|Y
 box ck_next|t_exists
 jump check|m
 
