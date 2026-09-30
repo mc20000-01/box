@@ -475,23 +475,23 @@ high.gfx.ppm pst|.build/gfx2.ppm
 box gx_name|ppm-status
 box gx_got|$pst
 box gx_want|ok
-box gx_next|x_done
+box gx_next|x_vgreset
 jump gxcheck|m
 
 // --- bxvg ------------------------------------------------------------------
 premark x_vgreset
-ui.vg reset
-ui.vg size 48|48
-ui.vg add ring|circle|24|24|20
-ui.vg set ring|stroke|#e0e0e0
-ui.vg set ring|sw|3
-ui.vg set ring|fill|none
-ui.vg add dot|circle|24|24|8
-ui.vg set dot|fill|#ff5555
-ui.vg set dot|stroke|none
+ui.vg|reset
+ui.vg|size|48|48
+ui.vg|add|ring|circle|24|24|20
+ui.vg|set|ring|stroke|#e0e0e0
+ui.vg|set|ring|sw|3
+ui.vg|set|ring|fill|none
+ui.vg|add|dot|circle|24|24|8
+ui.vg|set|dot|fill|#ff5555
+ui.vg|set|dot|stroke|none
 high.gfx.fbsize 96|96
 high.gfx.fbclear #101010
-ui.vg draw 0|0|96|96
+ui.vg|draw|0|0|96|96
 high.gfx.pixel vgr|48|10
 box gx_name|vg-circle-stroke
 box gx_got|$vgr
@@ -516,14 +516,14 @@ box gx_next|x_vgrect
 jump gxcheck|m
 
 premark x_vgrect
-ui.vg reset
-ui.vg size 48|48
-ui.vg add box|rect|8|8|32|32
-ui.vg set box|fill|#4488ff
-ui.vg set box|stroke|none
+ui.vg|reset
+ui.vg|size|48|48
+ui.vg|add|box|rect|8|8|32|32
+ui.vg|set|box|fill|#4488ff
+ui.vg|set|box|stroke|none
 high.gfx.fbsize 96|96
 high.gfx.fbclear #101010
-ui.vg draw 0|0|96|96
+ui.vg|draw|0|0|96|96
 high.gfx.pixel vgr2|24|24
 box gx_name|vg-rect-fill
 box gx_got|$vgr2
@@ -541,13 +541,13 @@ jump gxcheck|m
 
 // a document round trips through its own text form and renders the same
 premark x_vgdump
-ui.vg dump vgdump
-ui.vg reset
-ui.vg load vgdump
-ui.vg list vginfo
+ui.vg|dump|vgdump
+ui.vg|reset
+ui.vg|load|vgdump
+ui.vg|list|vginfo
 box gx_name|vg-dump-roundtrip
 box gx_got|$vginfo
-box gx_want|ui vg: 48x48, 1 shape(s), 0 frame(s)
+box gx_want|48x48, 1 shape(s), 0 frame(s)1 box rect x=8 y=8 w=32 h=32 fill=yes stroke=yes
 box gx_next|x_vgsvg
 jump gxcheck|m
 
@@ -558,11 +558,11 @@ file|n|writeline|$sf|<svg width="48" height="48">
 file|n|writeline|$sf|<circle cx="24" cy="24" r="16" fill="#22cc55"/>
 file|n|writeline|$sf|</svg>
 file|sf|close|$sf
-ui.vg reset
-ui.vg load file|.build/gx.svg
+ui.vg|reset
+ui.vg|load|file|.build/gx.svg
 high.gfx.fbsize 96|96
 high.gfx.fbclear #101010
-ui.vg draw 0|0|96|96
+ui.vg|draw|0|0|96|96
 high.gfx.pixel vgs|48|48
 box gx_name|vg-svg-import
 box gx_got|$vgs
@@ -572,16 +572,91 @@ jump gxcheck|m
 
 // contain keeps the aspect ratio and centres a wide document
 premark x_vgfit
-ui.vg reset
-ui.vg size 24|24
-ui.vg bg #203040
+ui.vg|reset
+ui.vg|size|24|24
+ui.vg|bg|#203040
 high.gfx.fbsize 96|48
 high.gfx.fbclear black
-ui.vg draw 0|0|96|48
+ui.vg|draw|0|0|96|48
 high.gfx.pixel vgf|48|24
 box gx_name|vg-contain-centres
 box gx_got|$vgf
 box gx_want|0x203040ff
+box gx_next|x_vgtypes
+jump gxcheck|m
+
+// --- introspection ----------------------------------------------------
+// The print-only commands. Not much to assert on stdout from here, so these
+// check the side effects that are observable: identity really does clear the
+// transform, and the listings are the ones the help promises.
+premark x_vgtypes
+high.gfx.types gxt
+box gx_got|$gxt
+box gx_want|button text slider box textbox label image panel
+box gx_name|gfx-types
+box gx_next|x_vgstyles
+jump gxcheck|m
+
+premark x_vgstyles
+high.gfx.styles gxst
+box gx_got|$gxst
+box gx_want|flat dark light glass neon warm cool mono solar
+box gx_name|gfx-styles
+box gx_next|x_vgcolors
+jump gxcheck|m
+
+// color takes a hex string and answers a decimal; named takes a name and
+// answers "0x..." hex. Two different round trips for the same question, and
+// colorhex exists to get back from one to the other.
+premark x_vgcolors
+high.gfx.color gxc|#ff0000
+box gx_got|$gxc
+box gx_want|4278190335
+box gx_name|gfx-color-decimal
+box gx_next|x_vgcolorhex
+jump gxcheck|m
+
+premark x_vgcolorhex
+high.gfx.colorhex gxh|$gxc
+box gx_got|$gxh
+box gx_want|#ff0000
+box gx_name|gfx-colorhex-roundtrip
+box gx_next|x_vgnamed
+jump gxcheck|m
+
+premark x_vgnamed
+high.gfx.named gxn|red
+box gx_got|$gxn
+box gx_want|0xff0000ff
+box gx_name|gfx-named-red
+box gx_next|x_vgidentity
+jump gxcheck|m
+
+// identity drops the accumulated transform, so a rect drawn after a scale
+// lands where it was asked to rather than where the scale left it
+premark x_vgidentity
+high.gfx.fbsize 96|96
+high.gfx.fbclear #101010
+high.gfx.scale 2|2
+high.gfx.identity
+high.gfx.rect 40|40|10|10|#4488ff
+high.gfx.pixel vgi|44|44
+box gx_name|gfx-identity-clears-transform
+box gx_got|$vgi
+box gx_want|0x4488ffff
+box gx_next|x_vglist
+jump gxcheck|m
+
+// high.gfx.clear really does empty the element table, not just the pixels.
+// The box is pre-set, so a list that writes nothing at all still clears it
+// rather than leaving the previous value behind.
+premark x_vglist
+high.gfx.clear
+box gxls|stale
+high.gfx.list gxls
+box gx_name|gfx-clear-empties-elements
+box gx_got|$gxls
+box gx_want|
 box gx_next|x_done
 jump gxcheck|m
 

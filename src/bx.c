@@ -1467,8 +1467,14 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
             }
             else if (streqi(p[0], "list")) {
                 bx_vg_doc_t *d = bx_vg_get();
-                printf("ui vg: %dx%d, %d shape(s), %d frame(s)\n",
-                       (int)d->w, (int)d->h, d->nshape, d->nframe);
+                char vbuf[4096];
+                vbuf[0] = 0;
+                int vpos = snprintf(vbuf, sizeof vbuf, "%dx%d, %d shape(s), %d frame(s)",
+                                    (int)d->w, (int)d->h, d->nshape, d->nframe);
+                /* Into the first box when there is one, otherwise to stdout.
+                 * Every other listing here does this. */
+                const char *summary = vbuf;
+                printf("ui vg: %s\n", summary);
                 for (int32_t i = 0; i < d->nshape; i++) {
                     bx_vg_shape_t *sh = &d->shape[i];
                     const char *ty = sh->type==BX_VG_RECT?"rect":
@@ -1477,15 +1483,22 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                                      sh->type==BX_VG_LINE?"line":
                                      sh->type==BX_VG_POLY?"poly":
                                      sh->type==BX_VG_PATH?"path":"text";
-                    printf("  %d %-12s %-6s x=%g y=%g w=%g h=%g fill=%s stroke=%s\n",
-                           sh->id, sh->name[0]?sh->name:"-", ty,
-                           sh->x, sh->y, sh->w, sh->h,
-                           sh->has_fill?"yes":"no", sh->has_stroke?"yes":"no");
+                    int one = snprintf(vbuf+vpos, sizeof vbuf - (size_t)vpos,
+                                       "%s%s%d %s %s x=%g y=%g w=%g h=%g fill=%s stroke=%s",
+                                       i?"\n":"", i?"  ":"", sh->id, sh->name[0]?sh->name:"-", ty,
+                                       sh->x, sh->y, sh->w, sh->h,
+                                       sh->has_fill?"yes":"no", sh->has_stroke?"yes":"no");
+                    if (one > 0) vpos += one < (int)(sizeof vbuf - (size_t)vpos) ? one : (int)(sizeof vbuf - (size_t)vpos);
+                    if ((size_t)vpos >= sizeof vbuf - 1) break;
                 }
-                for (int32_t i = 0; i < d->nframe; i++)
-                    printf("  frame %d %-12s shapes %d..%d\n", i,
-                           d->frame[i].name, d->frame[i].first,
-                           d->frame[i].first + d->frame[i].count - 1);
+                for (int32_t i = 0; i < d->nframe && (size_t)vpos < sizeof vbuf - 1; i++) {
+                    int one = snprintf(vbuf+vpos, sizeof vbuf - (size_t)vpos, "\n  frame %d %s %d..%d",
+                                       i, d->frame[i].name, d->frame[i].first,
+                                       d->frame[i].first + d->frame[i].count - 1);
+                    if (one > 0) vpos += one;
+                }
+                if ((size_t)vpos >= sizeof vbuf) vpos = (int)sizeof vbuf - 1;
+                if (n>=2) { box_set(&pr->boxes, p[1], vbuf); printf("ui vg: %s\n", vbuf); }
             }
             else if (streqi(p[0], "frame") && n>=2) {
                 bx_vg_doc_t *d = bx_vg_get();
@@ -1989,6 +2002,9 @@ ui_done:
                 else printf("%s\n",buf);
             }
             else if(streqi(sub,"list")){
+                /* An empty list is the common case and must still answer "",
+                 * not whatever was on the stack. */
+                char lbuf[2048]; lbuf[0]=0; size_t lpos=0;
                 for(uint32_t i=0;i<g_bx_gfx.element_count;i++){
                     const char *tn="?";
                     switch(g_bx_gfx.elements[i].type){
@@ -1996,11 +2012,14 @@ ui_done:
                     case BX_GFX_TYPE_SLIDER:tn="slider";break; case BX_GFX_TYPE_BOX:tn="box";break;
                     case BX_GFX_TYPE_TEXTBOX:tn="textbox";break; case BX_GFX_TYPE_LABEL:tn="label";break;
                     case BX_GFX_TYPE_IMAGE:tn="image";break; case BX_GFX_TYPE_PANEL:tn="panel";break; }
-                    printf("  %u %s %dx%d at %d,%d %s\n",g_bx_gfx.elements[i].id,tn,
+                    lpos += (size_t)snprintf(lbuf+lpos,sizeof lbuf-lpos,"%s%u %s %dx%d at %d,%d %s",
+                        i?"\n":"",g_bx_gfx.elements[i].id,tn,
                         g_bx_gfx.elements[i].width,g_bx_gfx.elements[i].height,
                         g_bx_gfx.elements[i].x,g_bx_gfx.elements[i].y,
                         g_bx_gfx.elements[i].text?g_bx_gfx.elements[i].text:"");
                 }
+                if (lpos>=sizeof lbuf) lpos=sizeof lbuf-1;
+                if (n>=1) gfx_out(pr,p[0],lbuf); else printf("%s\n",lbuf);
             }
             else if(streqi(sub,"clear")){
                 for(uint32_t i=0;i<g_bx_gfx.element_count;i++){
@@ -2010,7 +2029,11 @@ ui_done:
                 g_bx_gfx.element_count=0; g_bx_gfx.element_capacity=0; g_bx_gfx.next_auto_id=1;
             }
             else if(streqi(sub,"types")){
-                printf("button text slider box textbox label image panel\n");
+                /* Into the first box when there is one, otherwise to stdout,
+                 * which is what every other command here does. */
+                static const char *const tn =
+                    "button text slider box textbox label image panel";
+                if (n>=1) gfx_out(pr,p[0],tn); else printf("%s\n",tn);
             }
             else if(streqi(sub,"plot") && n>=3){
                 uint32_t c;
@@ -2112,9 +2135,12 @@ ui_done:
                     "crimson","khaki","plum","orchid","beige","ivory","azure","lavender",
                     "linen","snow","skyblue","steelblue","royalblue","forestgreen","seagreen",
                     "darkred","darkblue","darkgreen","darkgray","lightgray","lightblue","lightgreen",NULL};
-                for(int i=0;nm[i];i++){ int f=0; uint32_t c=bx_gfx_color_named(nm[i],&f);
-                    if(f) printf("%s=0x%08x ",nm[i],c); }
-                printf("\n");
+                char buf[4096]; size_t pos=0;
+                for(int i=0;nm[i] && pos<sizeof buf;i++){ int f=0; uint32_t c=bx_gfx_color_named(nm[i],&f);
+                    if(f) pos += (size_t)snprintf(buf+pos,sizeof buf-pos,"%s=0x%08x ",nm[i],c); }
+                if (pos>=sizeof buf) pos=sizeof buf-1;
+                if (pos && buf[pos-1]==' ') buf[--pos]=0;   /* no trailing space */
+                if (n>=1) gfx_out(pr,p[0],buf); else printf("%s\n",buf);
             }
             else if(streqi(sub,"lerp") && n>=4){
                 uint32_t c0,c1;
@@ -2135,8 +2161,12 @@ ui_done:
             }
             else if(streqi(sub,"styles")){
                 int cnt=0; const char *const *names=bx_gfx_style_names(&cnt);
-                for(int i=0;i<cnt;i++) printf("%s ",names[i]);
-                printf("\n");
+                char buf[512]; size_t pos=0;
+                for(int i=0;i<cnt && pos<sizeof buf; i++)
+                    pos += (size_t)snprintf(buf+pos,sizeof buf-pos,"%s ",names[i]);
+                if (pos>=sizeof buf) pos=sizeof buf-1;
+                if (pos && buf[pos-1]==' ') buf[--pos]=0;
+                if (n>=1) gfx_out(pr,p[0],buf); else printf("%s\n",buf);
             }
             else if(streqi(sub,"shape") && n>=10){
                 /* shape|BOX|PARENT|KIND|x0|y0|x1|y1|x2|y2|COLOR  (COLOR may be "c0,c1") */
