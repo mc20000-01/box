@@ -994,22 +994,21 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
             int kind = bx_ui_kind_by_name(p[1]);
             if(kind<0){ fprintf(stderr,"ui new: unknown kind '%s'\n",p[1]); }
             else {
-                bx_ui_element_t *e = bx_ui_add(p[0],(bx_ui_kind_t)kind, n>=3?p[2]:"");
+                /* new|ID|KIND [parent] [W H]. A third argument that is a
+                 * number is a width, not a parent: an id never looks like a
+                 * number and a width never looks like an id. Deciding this
+                 * before the element is created matters, because passing the
+                 * width in as a parent leaves a frame with a parent named
+                 * "400" and the size it asked for nowhere. */
+                const char *parent = "";
+                int argi = 2;
+                if (n > argi && p[argi][0] && !is_number(p[argi])) { parent = p[argi]; argi++; }
+                bx_ui_element_t *e = bx_ui_add(p[0],(bx_ui_kind_t)kind, parent);
                 if(!e) fprintf(stderr,"ui new: bad id '%s' (max %d chars, a-zA-Z0-9_.-) or id already exists\n",p[0],BX_UI_ID_MAX-1);
                 else {
                     /* An unknown kind becomes a config object: a free-form
                      * container whose fields can be set and tuned later. */
                     if(kind>=BX_UI_KIND_CUSTOM){ e->layout=BX_UI_LAYOUT_COLUMN; e->pad_x=8; e->pad_y=8; e->gap=6; }
-                    /* new|ID|KIND [parent] [W H] - a third argument that is a
-                     * number is a width, not a parent, because an id never
-                     * looks like a number and a width never looks like one
-                     * either. Without this the two forms are indistinguishable
-                     * and a sized frame silently loses its size. */
-                    int argi = 2;
-                    if (n > argi && !is_number(p[argi])) {
-                        snprintf(e->parent, sizeof e->parent, "%s", p[argi]);
-                        argi++;
-                    }
                     if (kind==BX_UI_KIND_FRAME || kind==BX_UI_KIND_PANE){
                         if (n > argi && is_number(p[argi])) e->w = (float)atof(p[argi]);
                         if (n > argi+1 && is_number(p[argi+1])) e->h = (float)atof(p[argi+1]);
@@ -1577,7 +1576,7 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
             }
             printf("\n"); fflush(stdout);
         }
-        else { printf("ui commands: init | kinds|list | new|ID|KIND [parent] | set|ID|field|val | get|ID|field | attach|FRAME|ID... | detach|FRAME|ID | list | layout|FRAME | dock|PANE | switch|PANE | render[|BOX | ppm|PATH|BOX] | hit|X|Y|BOX | press|ID|0|1 | select|ID|0|1 | close|ID | tween|ID|TARGET|PROP|FROM|TO|DUR|FN | tween|ID|to|V | tween|ID|cancel | tween|list | tweenfn|set|NAME|... | tweenfn|list | frame|once | frame|step|SECS | frame|fps|N | ease|FN|T...\n"); }
+        else { printf("ui commands: init | kinds|list | new|ID|KIND [parent] [W H] | build|BOX|file|PATH | spec|BOX | set|ID|field|val | get|ID|field | attach|FRAME|ID... | detach|FRAME|ID | list | layout|FRAME | dock|PANE | switch|PANE | render[|BOX] | ppm|PATH|BOX] | hit|X|Y|BOX | press|ID|0|1 | select|ID|0|1 | close|ID | pointer|X|Y|ACTION[BUTTON][BOX] | key|KEY|ACTION[BOX] | focus|ID[BOX]|next|prev | input|release | mathfn|list | drive|list|off | drive|ID|PROP|... | texture|ID|PATTERN|... | tween|ID|TARGET|PROP|FROM|TO|DUR|FN | tween|ID|to|V | tween|ID|cancel | tween|list | tweenfn|set|NAME|... | tweenfn|list | frame|once | frame|step|SECS | frame|fps|N | ease|FN|T...\n"); }
 ui_done:
         free_parts(p,n); free(substr);
     }

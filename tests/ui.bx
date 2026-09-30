@@ -635,6 +635,50 @@ ui.get|root|layout|ly
 box ui_name|align and layout read back by name
 box ui_got|$al/$ly
 box ui_want|start/none
+box ui_next|ui_kinds
+jump uicheck|m
+
+// ------------------------------------------------------------- kinds
+// A catalog that only lists names is not a catalog. Every type must survive
+// being built, laid out and drawn, because a name with no renderer is a name
+// that draws nothing and looks like a bug in whatever was meant to be there.
+
+premark ui_kinds
+ui.init
+ui.new|kf|frame|120|30
+ui.new|knav|kf
+ui.set|knav|kind|nav
+ui.get|knav|kind|g1
+box ui_name|a nav is a kind of its own, not a panel
+box ui_got|$g1
+box ui_want|nav
+box ui_next|ui_kinds_draw
+jump uicheck|m
+
+premark ui_kinds_draw
+// A name with no renderer draws nothing, which is indistinguishable from a
+// bug in whatever was meant to be there. So the check is pixels: a kind given
+// a size covers its rect, and the same kind given none does not.
+lib load|gfx
+high.gfx.fbsize|120|30
+ui.init
+ui.new|dkf|frame|120|30
+ui.new|dnav|dkf
+ui.set|dnav|kind|nav
+ui.set|dnav|x|0
+ui.set|dnav|y|0
+ui.set|dnav|w|120
+ui.set|dnav|h|30
+high.gfx.clear|#101010
+ui.render
+high.gfx.pixel|nc|40|15
+high.gfx.clear|#101010
+ui.set|dnav|w|0
+ui.render
+high.gfx.pixel|nc2|40|15
+box ui_name|a sized kind covers its rect, an unsized one covers nothing
+box ui_got|$nc/$nc2
+box ui_want|0x0b0f14ff/0x131a22ff
 box ui_next|ui_input
 jump uicheck|m
 

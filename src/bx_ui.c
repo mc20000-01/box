@@ -90,6 +90,36 @@ static const bx_ui_kind_row_t g_kinds[] = {
     { "breadcrumb", BX_UI_KIND_BREADCRUMB }, { "crumbs", BX_UI_KIND_BREADCRUMB },
     { "pagination", BX_UI_KIND_PAGINATION }, { "pager", BX_UI_KIND_PAGINATION },
     { "drawer", BX_UI_KIND_DRAWER }, { "flyout", BX_UI_KIND_DRAWER },
+    { "nav", BX_UI_KIND_NAV }, { "navbar", BX_UI_KIND_NAV },
+    { "toolbelt", BX_UI_KIND_TOOLBELT }, { "toolbox", BX_UI_KIND_TOOLBELT },
+    { "table", BX_UI_KIND_TABLE }, { "row", BX_UI_KIND_ROW },
+    { "tr", BX_UI_KIND_ROW }, { "cell", BX_UI_KIND_CELL },
+    { "td", BX_UI_KIND_CELL }, { "th", BX_UI_KIND_CELL },
+    { "dial", BX_UI_KIND_DIAL }, { "gauge", BX_UI_KIND_GAUGE },
+    { "meter", BX_UI_KIND_METER }, { "knob", BX_UI_KIND_KNOB },
+    { "acc", BX_UI_KIND_ACCORDION }, { "accordion", BX_UI_KIND_ACCORDION },
+    { "avatar", BX_UI_KIND_AVATAR }, { "link", BX_UI_KIND_LINK },
+    { "a", BX_UI_KIND_LINK }, { "kbd", BX_UI_KIND_KBD },
+    { "key", BX_UI_KIND_KBD }, { "codeblock", BX_UI_KIND_CODEBLOCK },
+    { "code", BX_UI_KIND_CODEBLOCK }, { "blockquote", BX_UI_KIND_BLOCKQUOTE },
+    { "quote", BX_UI_KIND_BLOCKQUOTE }, { "well", BX_UI_KIND_WELL },
+    { "spacer", BX_UI_KIND_SPACER }, { "gap", BX_UI_KIND_SPACER },
+    { "overlay", BX_UI_KIND_OVERLAY }, { "scrim", BX_UI_KIND_OVERLAY },
+    { "skeleton", BX_UI_KIND_SKELETON }, { "placeholder", BX_UI_KIND_SKELETON },
+    { "banner", BX_UI_KIND_BANNER }, { "toast", BX_UI_KIND_TOAST },
+    { "snackbar", BX_UI_KIND_TOAST }, { "empty", BX_UI_KIND_EMPTY },
+    { "blank", BX_UI_KIND_EMPTY }, { "loading", BX_UI_KIND_LOADING },
+    { "spinnerbox", BX_UI_KIND_LOADING }, { "dot", BX_UI_KIND_STEPPER_DOT },
+    { "rating", BX_UI_KIND_RATING }, { "stars", BX_UI_KIND_RATING },
+    { "togglegroup", BX_UI_KIND_TOGGLE_GROUP }, { "segmented", BX_UI_KIND_TOGGLE_GROUP },
+    { "color", BX_UI_KIND_COLOR }, { "swatch", BX_UI_KIND_COLOR },
+    { "thumbnail", BX_UI_KIND_THUMBNAIL }, { "thumb", BX_UI_KIND_THUMBNAIL },
+    { "tile", BX_UI_KIND_TILE }, { "bargroup", BX_UI_KIND_BAR_GROUP },
+    { "legend", BX_UI_KIND_LEGEND }, { "hint", BX_UI_KIND_HINT },
+    { "help", BX_UI_KIND_HINT }, { "labelgroup", BX_UI_KIND_LABEL_GROUP },
+    { "menusep", BX_UI_KIND_MENU_SEP }, { "splitpane", BX_UI_KIND_SPLIT_PANE },
+    { "navitem", BX_UI_KIND_SIDEBAR_ITEM }, { "status", BX_UI_KIND_STATUS },
+    { "iconbtn", BX_UI_KIND_ICON_BUTTON }, { "icon-button", BX_UI_KIND_ICON_BUTTON },
     { NULL, 0 }
 };
 
@@ -1116,7 +1146,87 @@ static int ui_draw_one(bx_gfx_fb_t *fb, bx_ui_element_t *e) {
         case BX_UI_KIND_COMBOBOX:
         case BX_UI_KIND_BREADCRUMB:
         case BX_UI_KIND_PAGINATION:
+        case BX_UI_KIND_NAV:
+        case BX_UI_KIND_TOOLBELT:
+        case BX_UI_KIND_ROW:
+        case BX_UI_KIND_CELL:
+        case BX_UI_KIND_WELL:
+        case BX_UI_KIND_TILE:
+        case BX_UI_KIND_STATUS:
             ui_surface(fb, e, ui_fill_for(e));
+            if (e->text[0] && e->kind != BX_UI_KIND_FIELD)
+                bx_gfx_text(fb, x + 6, y + (h - bx_gfx_text_h()) / 2, e->text, BX_UI_C_TEXT);
+            break;
+        case BX_UI_KIND_METER:
+            /* A meter has a track and a filled part, so it is a progress bar
+             * whose value reads as a level rather than a percentage. */
+            ui_surface(fb, e, ui_fill_for(e));
+            bx_gfx_rect_round(fb, x + 2, y + (h - 6) / 2, (int)w - 4, 6, 3, BX_UI_C_BORDER);
+            if (e->value[0]) {
+                float v = (float)atof(e->value);
+                if (v < 0) v = 0;
+                if (v > 100) v = 100;
+                bx_gfx_rect_round(fb, x + 2, y + (h - 6) / 2, (int)((w - 4) * v / 100.0f), 6, 3,
+                                 BX_UI_C_ACCENT);
+            }
+            break;
+        case BX_UI_KIND_DIAL:
+        case BX_UI_KIND_KNOB: {
+            /* Round, with a mark at the value. Drawn from the same circle
+             * helper the icons use, so a knob and a spinner agree. */
+            int r = (int)(w < h ? w : h) / 2 - 1;
+            if (r < 3) break;
+            int cx = x + (int)w / 2, cy = y + (int)h / 2;
+            bx_gfx_circle_outline(fb, cx, cy, r, BX_UI_C_BORDER);
+            bx_gfx_circle(fb, cx, cy, r - 2, BX_UI_C_BG);
+            float v = e->value[0] ? (float)atof(e->value) : 50.0f;
+            if (v < 0) v = 0;
+            if (v > 100) v = 100;
+            /* -90deg to +90deg, so 0 is left and 100 is right. */
+            float ang = -1.5707963f + (float)v / 100.0f * 3.1415927f;
+            bx_gfx_line(fb, cx, cy,
+                        cx + (int)(float)(r - 3) * (float)cos(ang),
+                        cy + (int)(float)(r - 3) * (float)sin(ang),
+                        BX_UI_C_ACCENT);
+            break;
+        }
+        case BX_UI_KIND_RATING: {
+            /* Five stars, filled to the value. `count` sets how many there
+             * are; `value` sets how many are filled, so a half rating reads
+             * the same way as a progress bar rather than snapping. */
+            int count = 5, filled = 5;
+            const char *cnt = bx_ui_config_get(e, "count");
+            const char *val = bx_ui_config_get(e, "value");
+            if (cnt) count = (int)atof(cnt);
+            if (val) filled = (int)atof(val);
+            else if (e->value[0]) filled = (int)(atof(e->value) / 100.0f * count + 0.5f);
+            if (count < 1) count = 1;
+            if (count > 20) count = 20;
+            if (filled < 0) filled = 0;
+            if (filled > count) filled = count;
+            int sz = (int)h < (int)w / count ? (int)h : (int)w / count;
+            if (sz < 2) break;
+            for (int i = 0; i < count; i++)
+                bx_gfx_rect_round(fb, x + i * sz, y, sz - 1, sz - 1, 1,
+                                 i < filled ? BX_UI_C_ACCENT : BX_UI_C_BORDER);
+            break;
+        }
+        case BX_UI_KIND_SPACER:
+            /* A spacer draws nothing. It is a kind because a layout needs a
+             * thing to be the gap, not because it needs pixels. */
+            break;
+        case BX_UI_KIND_MENU_SEP:
+            bx_gfx_rect(fb, x + 4, y + h / 2, (int)w - 8, 1, BX_UI_C_BORDER);
+            break;
+        case BX_UI_KIND_OVERLAY:
+            /* A scrim: dark, and translucent if the caller set an alpha. */
+            {
+                uint32_t c = e->color ? e->color : 0x000000ff;
+                if (e->theme.alpha > 0 && e->theme.alpha < 255)
+                    c = (c & 0x00ffffffu) | ((uint32_t)e->theme.alpha << 24);
+                bx_gfx_rect(fb, x, y, (int)w, (int)h, c);
+            }
+            break;
             if (e->text[0] && e->kind != BX_UI_KIND_FIELD)
                 bx_gfx_text(fb, x + 6, y + (h - bx_gfx_text_h()) / 2, e->text, BX_UI_C_TEXT);
             break;
@@ -1270,6 +1380,14 @@ int bx_ui_set_field(bx_ui_element_t *e, const char *field, const char *value) {
     else if (!strcmp(field, "scroll")) e->scroll = (float)d;
     else if (!strcmp(field, "value")) snprintf(e->value, sizeof e->value, "%s", value);
     else if (!strcmp(field, "text")) snprintf(e->text, sizeof e->text, "%s", value);
+    else if (!strcmp(field, "kind") || !strcmp(field, "kindname")) {
+        /* An element's kind is settable, so a spec can turn a container into
+         * whatever it means to be without rebuilding the tree. An unknown name
+         * is not an error here: it falls through to the config bag below and
+         * the element keeps its fields, which is what makes it a custom kind. */
+        int k = bx_ui_kind_by_name(value);
+        if (k >= 0) e->kind = (bx_ui_kind_t)k;
+    }
     else if (!strcmp(field, "style")) snprintf(e->style, sizeof e->style, "%s", value);
     else if (!strcmp(field, "bxvg")) snprintf(e->bxvg, sizeof e->bxvg, "%s", value);
     else if (!strcmp(field, "visible")) e->visible = atoi(value) ? 1 : 0;
@@ -2195,8 +2313,14 @@ int bx_ui_build(const char *text, char *err, size_t errcap) {
         ui_spec_line_t *L = &lines[i];
         if (L->update || !L->id[0] || !L->kind[0]) continue;
         int k = bx_ui_kind_by_name(L->kind);
-        bx_ui_element_t *e = bx_ui_add(L->id,
-                k >= 0 ? (bx_ui_kind_t)k : BX_UI_KIND_CUSTOM, L->parent);
+        bx_ui_element_t *e = bx_ui_find(L->id);
+        /* An id already in the tree is that object, not a conflict: the same
+         * rule ui.new follows. Re-running a spec edits the tree it built last
+         * time rather than refusing to run at all, which is what makes a spec
+         * something a program can apply twice. */
+        if (e) { e->kind = k >= 0 ? (bx_ui_kind_t)k : BX_UI_KIND_CUSTOM; }
+        else e = bx_ui_add(L->id,
+                   k >= 0 ? (bx_ui_kind_t)k : BX_UI_KIND_CUSTOM, L->parent);
         if (!e) {
             if (err) snprintf(err, errcap, "cannot create '%s'", L->id);
             free(lines); free(copy);

@@ -123,6 +123,52 @@ typedef enum {
     BX_UI_KIND_PAGINATION,
     BX_UI_KIND_DRAWER,
 
+    /* The remaining names a UI is normally asked for. Some are containers and
+     * some draw something of their own, but every one of them is a real kind
+     * with a name, because "a panel with a different style" is not the same
+     * thing as a toolbelt, and a spec should be able to say which it means. */
+    BX_UI_KIND_NAV,
+    BX_UI_KIND_TOOLBELT,
+    BX_UI_KIND_TABLE,
+    BX_UI_KIND_ROW,
+    BX_UI_KIND_CELL,
+    BX_UI_KIND_DIAL,
+    BX_UI_KIND_GAUGE,
+    BX_UI_KIND_METER,
+    BX_UI_KIND_KNOB,
+    BX_UI_KIND_BREADCRUMB_SEP,
+    BX_UI_KIND_ACCORDION,
+    BX_UI_KIND_AVATAR,
+    BX_UI_KIND_LINK,
+    BX_UI_KIND_KBD,
+    BX_UI_KIND_CODEBLOCK,
+    BX_UI_KIND_BLOCKQUOTE,
+    BX_UI_KIND_WELL,
+    BX_UI_KIND_SPACER,
+    BX_UI_KIND_OVERLAY,
+    BX_UI_KIND_RIPPLE,
+    BX_UI_KIND_SKELETON,
+    BX_UI_KIND_BANNER,
+    BX_UI_KIND_TOAST,
+    BX_UI_KIND_EMPTY,
+    BX_UI_KIND_LOADING,
+    BX_UI_KIND_STEPPER_DOT,
+    BX_UI_KIND_RATING,
+    BX_UI_KIND_TOGGLE_GROUP,
+    BX_UI_KIND_COLOR,
+    BX_UI_KIND_THUMBNAIL,
+    BX_UI_KIND_TILE,
+    BX_UI_KIND_BAR_GROUP,
+    BX_UI_KIND_LEGEND,
+    BX_UI_KIND_HINT,
+    BX_UI_KIND_LABEL_GROUP,
+    BX_UI_KIND_TOOLTIP_ARROW,
+    BX_UI_KIND_MENU_SEP,
+    BX_UI_KIND_SPLIT_PANE,
+    BX_UI_KIND_SIDEBAR_ITEM,
+    BX_UI_KIND_STATUS,
+    BX_UI_KIND_ICON_BUTTON,
+
     BX_UI_KIND_CUSTOM = 1000
 } bx_ui_kind_t;
 
