@@ -495,6 +495,52 @@ static int bxe_run_cmd(BxeEnv *e, const char *cmd){ int pc=exec_line(&e->pr,cmd,
 static void bxe_list(void){ printf("environments: %d\n",bxe_count); for(int i=0;i<bxe_count;i++) printf("  %-16s cmds=%ld\n",bxe_envs[i].name,bxe_envs[i].cmds); }
 static void bxe_reset(BxeEnv *e){ boxes_free(&e->pr.boxes); marks_free(&e->pr.marks); memset(&e->pr,0,sizeof e->pr); e->cmds=0; }
 static char *bxe_join(char **p, int start, int n){ size_t cap=0; for(int k=start;k<n;k++) cap += strlen(p[k])+2; char *cmd=calloc(1,cap+1); if(!cmd) return xstrdup(""); for(int k=start;k<n;k++){ if(k>start) strcat(cmd,"|"); strcat(cmd,p[k]); } return cmd; }
+
+/* Marshalling: move values between a caller and a boxedenv. Values are
+ * resolved against the caller's boxes so `$name` and the \(...) escape work
+ * on both sides, which lets one env be called repeatedly like a function. */
+static int bxe_in(Program *parent, BxeEnv *e, char **p, int start, int n){
+    if(((n-start)&1)!=0){ fprintf(stderr,"bxe in: usage bxe in|%s|BOX|VALUE|BOX|VALUE...\n",e->name); return -1; }
+    for(int k=start;k+1<n;k+=2){
+        Res rn=rfast(&parent->boxes,p[k]), rv=rfast(&parent->boxes,p[k+1]);
+        box_set(&e->pr.boxes,rn.ptr,rv.ptr);
+        if(rn.owned)free((char*)rn.ptr);
+        if(rv.owned)free((char*)rv.ptr);
+    }
+    return 0;
+}
+static int bxe_copy_box(Program *parent, BxeEnv *e, const char *name){
+    int i=box_index(&e->pr.boxes,name);
+    if(i<0){ fprintf(stderr,"bxe out: no box %s in %s\n",name,e->name); return 0; }
+    Res rn=rfast(&parent->boxes,name);
+    box_set(&parent->boxes,rn.ptr,e->pr.boxes.items[i].value);
+    if(rn.owned)free((char*)rn.ptr);
+    return 1;
+}
+static int bxe_out(Program *parent, BxeEnv *e, char **p, int start, int n){
+    int copied=0;
+    for(int k=start;k<n;k++){
+        if(streqi(p[k],"*")){
+            for(size_t i=0;i<e->pr.boxes.len;i++) copied += bxe_copy_box(parent,e,e->pr.boxes.items[i].name);
+        } else copied += bxe_copy_box(parent,e,p[k]);
+    }
+    return copied;
+}
+static void bxe_show(BxeEnv *e, const char *name){
+    int i=box_index(&e->pr.boxes,name);
+    if(i<0) printf("bxe: %s has no box %s\n",e->name,name);
+    else printf("%s\n",e->pr.boxes.items[i].value);
+    fflush(stdout);
+}
+static void bxe_boxes(BxeEnv *e){
+    printf("bxe: %s has %zu boxes\n",e->name,e->pr.boxes.len);
+    for(size_t i=0;i<e->pr.boxes.len;i++){
+        const char *nm=e->pr.boxes.items[i].name, *v=e->pr.boxes.items[i].value;
+        if(strlen(v)>40) printf("  %-16s %.40s...\n",nm,v);
+        else printf("  %-16s %s\n",nm,v);
+    }
+    fflush(stdout);
+}
 static int exec_command(Program *pr, const char *cmdline, int pc) {
     char *line = strip_comment(cmdline); char *s = trim(line); if (!*s) { free(line); return pc + 1; }
     char *space = s; while (*space && !isspace((unsigned char)*space) && *space != '|') space++;
@@ -813,7 +859,12 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
         else if(n>=2 && streqi(p[0],"all")) { char *cmd=bxe_join(p,1,n); for(int i=0;i<bxe_count;i++) bxe_run_cmd(&bxe_envs[i],cmd); free(cmd); }
         else if(n>=2 && streqi(p[0],"cmds")) { BxeEnv *e=bxe_find(p[1]); printf("bxe: %s commands=%ld\n",p[1], e?(long)e->cmds:0L); fflush(stdout); }
         else if(n>=2 && streqi(p[0],"reset")) { BxeEnv *e=bxe_find(p[1]); if(e){ bxe_reset(e); printf("bxe: reset %s\n",p[1]); } else printf("bxe: no env %s\n",p[1]); fflush(stdout); }
-        else { printf("bxe commands:\n  list | create|name | run|name|cmd | all|cmd | cmds|name | reset|name\n"); }
+        else if(n>=2 && streqi(p[0],"in")) { BxeEnv *e=bxe_get(pr,p[1]); if(e && bxe_in(pr,e,p,2,n)==0) printf("bxe: set %d boxes in %s\n",(n-2)/2,p[1]); fflush(stdout); }
+        else if(n>=2 && streqi(p[0],"out")) { BxeEnv *e=bxe_get(pr,p[1]); if(e) printf("bxe: copied %d boxes from %s\n",bxe_out(pr,e,p,2,n),p[1]); fflush(stdout); }
+        else if(n>=3 && streqi(p[0],"get")) { BxeEnv *e=bxe_find(p[1]); if(e) bxe_show(e,p[2]); else printf("bxe: no env %s\n",p[1]); fflush(stdout); }
+        else if(n>=2 && streqi(p[0],"boxes")) { BxeEnv *e=bxe_find(p[1]); if(e) bxe_boxes(e); else printf("bxe: no env %s\n",p[1]); fflush(stdout); }
+        else { printf("bxe commands:\n  list | create|name | run|name|cmd | all|cmd | cmds|name | reset|name\n");
+               printf("  in|name|BOX|VALUE... | out|name|BOX|* | get|name|BOX | boxes|name\n"); }
         free_parts(p,n);
     }
     else if (streqi(cmd,"lib")) { int n; char **p=split_bars(args,&n);

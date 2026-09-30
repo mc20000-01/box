@@ -1,0 +1,157 @@
+// Boxedenv (bxe) marshalling tests. Each check passes boxes into a named
+// environment, runs a command there, and pulls results back out, so the
+// parent/child box boundary is exercised rather than just the env itself.
+box bx_fail|0
+jump bx_first|m
+
+premark bxcheck
+jumpif $bx_got|!==|$bx_want|bx_fail|m
+say PASS $bx_name
+jump $bx_next|m
+
+premark bx_fail
+math bx_fail|$bx_fail|1|+
+say FAIL $bx_name got [$bx_got] want [$bx_want]
+jump $bx_next|m
+
+// A fresh env inherits the caller's boxes at creation, so loading math in the
+// parent is what lets the env resolve high.math.* commands.
+premark bx_first
+lib load|math
+box n|16
+bxe create|calc
+bxe in|calc|n|$n
+bxe run|calc|high.math.sqrt res|$n
+bxe out|calc|res
+box bx_name|marshal-in-out
+box bx_got|$res
+box bx_want|4
+box bx_next|bx_second
+jump bxcheck|m
+
+// Calling the same env again must reuse its state: only the marshalled input
+// changes, and the output box is overwritten by the new run.
+premark bx_second
+box n|81
+bxe in|calc|n|$n
+bxe run|calc|high.math.sqrt res|$n
+bxe out|calc|res
+box bx_name|marshal-recall
+box bx_got|$res
+box bx_want|9
+box bx_next|bx_parentref
+jump bxcheck|m
+
+// Values passed with `in` resolve against the caller's boxes, so a parent box
+// can feed the env without the caller repeating its contents.
+premark bx_parentref
+box m|49
+bxe in|calc|n|$m
+bxe run|calc|high.math.sqrt res|$n
+bxe out|calc|res
+box bx_name|marshal-parent-ref
+box bx_got|$res
+box bx_want|7
+box bx_next|bx_string
+jump bxcheck|m
+
+// Marshalling is not limited to numbers: spaces survive the round trip.
+premark bx_string
+bxe in|calc|label|hello world
+bxe out|calc|label
+box bx_name|marshal-string
+box bx_got|$label
+box bx_want|hello world
+box bx_next|bx_isolation
+jump bxcheck|m
+
+// Boxes created inside the env stay hidden until they are marshalled out.
+premark bx_isolation
+bxe in|calc|seed|7
+bxe run|calc|high.math.fact f|$seed
+box bx_name|marshal-hidden-before-out
+box bx_got|$f
+box bx_want|
+box bx_next|bx_after_out
+jump bxcheck|m
+
+premark bx_after_out
+bxe out|calc|f
+box bx_name|marshal-visible-after-out
+box bx_got|$f
+box bx_want|5040
+box bx_next|bx_star
+jump bxcheck|m
+
+// `out|*` syncs every box the env holds, including ones the caller never
+// named, which is the shorthand for "give me the whole workspace".
+premark bx_star
+bxe in|calc|note|synced
+bxe out|calc|*
+box bx_name|marshal-star-sync
+box bx_got|$note
+box bx_want|synced
+box bx_next|bx_envs
+jump bxcheck|m
+
+// Two envs are separate workspaces: the same box name holds different values.
+premark bx_envs
+bxe create|ea
+bxe create|eb
+bxe in|ea|v|10
+bxe in|eb|v|99
+bxe out|ea|v
+box bx_name|env-a-value
+box bx_got|$v
+box bx_want|10
+box bx_next|bx_envb
+jump bxcheck|m
+
+premark bx_envb
+bxe out|eb|v
+box bx_name|env-b-value
+box bx_got|$v
+box bx_want|99
+box bx_next|bx_odd
+jump bxcheck|m
+
+// An odd argument count is a usage error and must leave the env untouched
+// rather than half-applying a pair.
+premark bx_odd
+box v2|5
+bxe in|oddenv|v2|$v2
+bxe in|oddenv|v2
+bxe out|oddenv|v2
+box bx_name|in-odd-count-ignored
+box bx_got|$v2
+box bx_want|5
+box bx_next|bx_missing
+jump bxcheck|m
+
+// Reading an unknown box or env reports instead of aborting the program, and
+// leaves the last marshalled result intact.
+premark bx_missing
+bxe get|nosuchenv|v
+bxe boxes|nosuchenv
+bxe out|calc|missingbox
+box bx_name|missing-box-does-not-crash
+box bx_got|$res
+box bx_want|7
+box bx_next|bx_m3d
+jump bxcheck|m
+
+// The 3D helpers marshal the same way as the scalar ones.
+premark bx_m3d
+box v|3 4 0
+bxe in|vec|v|$v
+bxe run|vec|high.m3d.vnorm nv|$v
+bxe out|vec|nv
+box bx_name|marshal-vec
+box bx_got|$nv
+box bx_want|0.6 0.8 0
+box bx_next|bx_done
+jump bxcheck|m
+
+premark bx_done
+say bxe tests done, failures: $bx_fail
+end

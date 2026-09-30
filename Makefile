@@ -20,7 +20,7 @@ KERNEL_LDFLAGS = -m elf_i386 -T src/kernel.ld -nostdlib -z max-page-size=0x1000
 QEMU = qemu-system-x86_64
 QEMU_FLAGS = -m 256M -serial mon:stdio -display gtk,gl=on -kernel
 
-.PHONY: all features gfx-tests gfx2-tests snd-tests math-tests friendly-tests packagetests install install-user uninstall clean smoke targets run-example asm-example raw-example compile-example os run-os run-os-vm run-os-gfx run-kernel verify-kernel clean-kernel distclean
+.PHONY: all features gfx-tests gfx2-tests snd-tests math-tests friendly-tests bxe-tests packagetests install install-user uninstall clean smoke targets run-example asm-example raw-example compile-example os run-os run-os-vm run-os-gfx run-kernel verify-kernel clean-kernel distclean
 
 all: bx
 
@@ -129,6 +129,13 @@ friendly-tests: bx
 	@grep -q '^FAIL' .build/friendly.out && { echo 'friendly tests failed:'; grep '^FAIL' .build/friendly.out; exit 1; } || true
 	@grep -q 'failures: 0' .build/friendly.out || { echo 'friendly tests did not finish cleanly:'; tail -3 .build/friendly.out; exit 1; }
 	@echo "friendly tests passed ($$(grep -c '^PASS' .build/friendly.out) checks) (wav=$(shell test -s .build/friendly.wav && echo present || echo missing))"
+
+bxe-tests: bx
+	@mkdir -p .build
+	@./bx run tests/bxe.bx > .build/bxe.out 2>&1
+	@grep -q '^FAIL' .build/bxe.out && { echo 'bxe tests failed:'; grep '^FAIL' .build/bxe.out; exit 1; } || true
+	@grep -q 'failures: 0' .build/bxe.out || { echo 'bxe tests did not finish cleanly:'; tail -3 .build/bxe.out; exit 1; }
+	@echo "bxe tests passed ($$(grep -c '^PASS' .build/bxe.out) checks)"
 
 packagetests: bx
 	@mkdir -p .build
