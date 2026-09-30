@@ -1,0 +1,211 @@
+// UI tests: ids, frames, docking, layouts, easing, and tween continuity.
+//
+// Every animation step uses a fixed delta rather than a wall-clock frame, so
+// these results come out the same on a fast machine and a slow one. That is
+// the reason `ui frame step` sits next to the real clock.
+
+box ui_fail|0
+jump ui_first|m
+
+premark uicheck
+jumpif $ui_got|!==|$ui_want|ui_fail|m
+say PASS $ui_name
+jump $ui_next|m
+
+premark ui_fail
+math ui_fail|$ui_fail|1|+
+say FAIL $ui_name got [$ui_got] want [$ui_want]
+jump $ui_next|m
+
+premark ui_first
+
+// ------------------------------------------------------------------ ids
+ui|init
+ui.new|root|frame
+ui.set|root|w|400
+ui.set|root|h|300
+ui.new|a|pane|root
+ui.new|b|pane|root
+ui.get|a|kind|ka
+box ui_name|pane kind reads back
+box ui_got|$ka
+box ui_want|pane
+box ui_next|ui_dupid
+jump uicheck|m
+
+// The same id is the same object, so a second create must not add one.
+premark ui_dupid
+ui.new|a|pane|root
+ui.get|a|kind|ka
+box ui_name|duplicate id is refused
+box ui_got|$ka
+box ui_want|pane
+box ui_next|ui_dock
+jump uicheck|m
+
+// --------------------------------------------------------------- docking
+premark ui_dock
+ui.set|a|dock|left
+ui.set|a|w|100
+ui.set|b|dock|right
+ui.set|b|w|100
+ui.dock|a
+ui.get|a|x|ax
+box ui_name|left dock sits at x=0
+box ui_got|$ax
+box ui_want|0
+box ui_next|ui_dockright
+jump uicheck|m
+
+premark ui_dockright
+say [AT ui_dockright]
+ui.dock|b
+ui.get|b|x|bx
+box ui_name|right dock sits at the right edge
+box ui_got|$bx
+box ui_want|300
+box ui_next|ui_fill
+jump uicheck|m
+
+premark ui_fill
+say [AT ui_fill]
+ui.new|c|pane|root
+ui.set|c|dock|fill
+ui.dock|c
+ui.get|c|w|cw
+box ui_name|fill dock takes the whole frame
+box ui_got|$cw
+box ui_want|400
+box ui_next|ui_tween
+jump uicheck|m
+
+// --------------------------------------------------------------- tweens
+premark ui_tween
+say [AT ui_tween]
+ui.tween|sl|a|x|0|-100|0.4|linear
+ui.frame|step|0.2
+ui.get|a|x|ax
+box ui_name|linear tween halfway
+box ui_got|$ax
+box ui_want|-50
+box ui_next|ui_retarget
+jump uicheck|m
+
+// Same id means the same tween object, so retargeting continues from the
+// current value instead of snapping back to the old start.
+premark ui_retarget
+ui.tween|sl|to|-40
+ui.frame|step|0.4
+ui.get|a|x|ax
+box ui_name|retarget lands on the new value
+box ui_got|$ax
+box ui_want|-40
+box ui_next|ui_cancel
+jump uicheck|m
+
+premark ui_cancel
+ui.get|a|x|before_cancel
+ui.tween|sl|cancel
+ui.frame|step|0.2
+ui.get|a|x|after_cancel
+box ui_name|cancelled tween stops moving
+box ui_got|$after_cancel
+box ui_want|$before_cancel
+box ui_next|ui_ease
+jump uicheck|m
+
+// --------------------------------------------------------------- easing
+premark ui_ease
+ui.tweenfn.set|swift|0.4 0 0.2 1
+ui.ease|swift|0.5|half
+box ui_name|cubic bezier is defined
+box ui_got|$half
+jumpif $half|!==|0|uicheck
+box ui_got|defined
+box ui_want|defined
+box ui_next|ui_mxb
+jump uicheck|m
+
+premark ui_mxb
+ui.tweenfn.set|ramp|y=mx+b 1 0
+ui.ease|ramp|0.5|half
+box ui_name|y=mx+b evaluates as linear
+box ui_got|$half
+box ui_want|0.5
+box ui_next|ui_linear
+jump uicheck|m
+
+premark ui_linear
+ui.ease|linear|0.25|quarter
+box ui_name|linear easing is the identity
+box ui_got|$quarter
+box ui_want|0.25
+box ui_next|ui_land
+jump uicheck|m
+
+// Spring overshoots on the way, but must still land exactly on the target.
+premark ui_land
+ui.new|springbox|pane
+ui.tween|land|springbox|w|0|300|0.3|spring
+ui.frame|step|0.5
+ui.get|springbox|w|sbw
+box ui_name|spring tween lands on target
+box ui_got|$sbw
+box ui_want|300
+box ui_next|ui_layout
+jump uicheck|m
+
+// --------------------------------------------------------------- layout
+premark ui_layout
+ui.new|lay|frame
+ui.set|lay|w|100
+ui.set|lay|h|50
+ui.set|lay|gap|10
+ui.set|lay|layout|row
+ui.new|lay1|pane|lay
+ui.new|lay2|pane|lay
+ui.set|lay1|w|20
+ui.set|lay2|w|30
+ui.layout|lay
+ui.get|lay2|x|l2x
+box ui_name|row layout offsets by width plus gap
+box ui_got|$l2x
+box ui_want|30
+box ui_next|ui_center
+jump uicheck|m
+
+premark ui_center
+ui.set|lay|justify|center
+ui.layout|lay
+ui.get|lay1|x|l1x
+box ui_name|center justify shifts the row
+box ui_got|$l1x
+box ui_want|20
+box ui_next|ui_custom
+jump uicheck|m
+
+// ------------------------------------------------------------- custom
+// An unknown kind is still accepted, as a config object: a bag of values that
+// can be set and tuned like any built-in element.
+premark ui_custom
+ui.new|theme|mytheme
+ui.get|theme|kind|tk
+box ui_name|custom kind is accepted
+box ui_got|$tk
+box ui_want|custom
+box ui_next|ui_close
+jump uicheck|m
+
+premark ui_close
+ui.close|b
+ui.get|root|children|nc
+box ui_name|closing a pane detaches it from its frame
+box ui_got|$nc
+box ui_want|2
+box ui_next|ui_last
+jump uicheck|m
+
+premark ui_last
+say ---
+say ui tests done, failures: $ui_fail
+end

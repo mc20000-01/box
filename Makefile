@@ -20,12 +20,12 @@ KERNEL_LDFLAGS = -m elf_i386 -T src/kernel.ld -nostdlib -z max-page-size=0x1000
 QEMU = qemu-system-x86_64
 QEMU_FLAGS = -m 256M -serial mon:stdio -display gtk,gl=on -kernel
 
-.PHONY: all features gfx-tests gfx2-tests snd-tests math-tests friendly-tests bxe-tests packagetests site serve-site tunnel tunnel-only install install-user uninstall clean smoke targets run-example asm-example raw-example compile-example os run-os run-os-vm run-os-gfx run-kernel verify-kernel clean-kernel distclean
+.PHONY: all features gfx-tests gfx2-tests snd-tests math-tests friendly-tests bxe-tests ui-tests packagetests site serve-site tunnel tunnel-only install install-user uninstall clean smoke targets run-example asm-example raw-example compile-example os run-os run-os-vm run-os-gfx run-kernel verify-kernel clean-kernel distclean
 
 all: bx
 
-bx: src/bx.c src/bx_gfx.c src/bx_wifi.c src/bx_thread_gpu.c src/bx_snd.c src/bx_math.c
-	$(CC) $(CFLAGS) -o bx src/bx.c src/bx_gfx.c src/bx_wifi.c src/bx_thread_gpu.c src/bx_snd.c src/bx_math.c $(LDFLAGS)
+bx: src/bx.c src/bx_gfx.c src/bx_ui.c src/bx_wifi.c src/bx_thread_gpu.c src/bx_snd.c src/bx_math.c
+	$(CC) $(CFLAGS) -o bx src/bx.c src/bx_gfx.c src/bx_ui.c src/bx_wifi.c src/bx_thread_gpu.c src/bx_snd.c src/bx_math.c $(LDFLAGS)
 
 # Kernel build
 kernel: .build/kernel.elf
@@ -136,6 +136,13 @@ bxe-tests: bx
 	@grep -q '^FAIL' .build/bxe.out && { echo 'bxe tests failed:'; grep '^FAIL' .build/bxe.out; exit 1; } || true
 	@grep -q 'failures: 0' .build/bxe.out || { echo 'bxe tests did not finish cleanly:'; tail -3 .build/bxe.out; exit 1; }
 	@echo "bxe tests passed ($$(grep -c '^PASS' .build/bxe.out) checks)"
+
+ui-tests: bx
+	@mkdir -p .build
+	@./bx run tests/ui.bx > .build/ui.out 2>&1
+	@grep -q '^FAIL' .build/ui.out && { echo 'ui tests failed:'; grep '^FAIL' .build/ui.out; exit 1; } || true
+	@grep -q 'failures: 0' .build/ui.out || { echo 'ui tests did not finish cleanly:'; tail -3 .build/ui.out; exit 1; }
+	@echo "ui tests passed ($$(grep -c '^PASS' .build/ui.out) checks)"
 
 packagetests: bx
 	@mkdir -p .build

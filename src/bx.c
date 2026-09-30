@@ -109,6 +109,7 @@ static int bx_snd_wav(const char *p){ (void)p; return -1; }
 #else
 #include "bx_wifi.h"
 #include "bx_gfx.h"
+#include "bx_ui.h"
 #include "bx_snd.h"
 #include "bx_math.h"
 #endif
@@ -910,6 +911,379 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
             free_parts(p,n);
         } else { fprintf(stderr,"wifi library not loaded: use 'lib load|wifi'\n"); fflush(stderr); }
     }
+#ifndef BX_EMBEDDED_SOURCE
+    /* The UI layer lives in bx_ui.c, which a transpiled program does not
+     * link, so these commands are native-only like high.math.* and high.m3d.*. */
+    else if (!strcmp(cmd,"ui") || !strncmp(cmd,"ui.",3)) {
+        /* Two spellings, both supported:
+         *   ui.new|ID|KIND      (dotted, like high.gfx.*)
+         *   ui|new|ID|KIND      (bar form, like lib)
+         * The bar form is convenient in a script, the dotted form reads like
+         * the rest of the library commands. */
+        const char *sub = NULL;
+        char **p = NULL; int n = 0; char *substr = NULL;
+        char family[48], act[48];
+        if (cmd[2]=='.') {
+            sub = cmd+3;
+            p = split_bars(args,&n);
+        } else {
+            p = split_bars(args,&n);
+            if (n>=1) {
+                /* p[0] is the subcommand; move the rest down one slot so the
+                 * handlers can keep indexing from p[0]. substr is freed at the
+                 * end, because free_parts no longer sees it. */
+                substr = p[0];
+                sub = substr;
+                for(int i=1;i<n;i++) p[i-1] = p[i];
+                n--;
+            }
+        }
+        /* ui.tweenfn.set is a two-level name; split it into family and action
+         * and fold the action back in as the first field so the handlers only
+         * ever look at one shape. */
+        family[0] = act[0] = 0;
+        if (sub) {
+            const char *dot = strchr(sub,'.');
+            if (dot) {
+                size_t fn = (size_t)(dot - sub); if (fn >= sizeof family) fn = sizeof family - 1;
+                memcpy(family, sub, fn); family[fn] = 0;
+                snprintf(act, sizeof act, "%s", dot+1);
+            } else snprintf(family, sizeof family, "%s", sub);
+            if (act[0]) {
+                static char joined[4096];
+                snprintf(joined, sizeof joined, "%s|%s", act, args ? args : "");
+                free_parts(p,n);
+                p = split_bars(joined,&n);
+            }
+        }
+        const char *fam = family;
+        if(!sub){ printf("ui commands: init | kinds|list | new|ID|KIND [parent] | set|ID|field|val | get|ID|field | attach|FRAME|ID... | detach|FRAME|ID | list | layout|FRAME | dock|PANE | switch|PANE | close|ID | tween|ID|TARGET|PROP|FROM|TO|DUR|FN | tween|ID|to|V | tween|ID|cancel | tween|list | tweenfn|set|NAME|... | tweenfn|list | frame|once | frame|step|SECS | frame|fps|N | ease|FN|T...\n"); free_parts(p,n); free(substr); return pc+1; }
+        if(streqi(sub,"init")){
+            bx_ui_reset(); printf("ui: init ok\n"); fflush(stdout);
+        }
+        else if(streqi(fam,"kinds") && n>=1){
+            if(!strcmp(p[0],"list")||streqi(p[0],"list")){
+                printf("ui element types (%d):\n", bx_ui_kind_count());
+                for(int i=0;i<bx_ui_kind_count();i++) printf("  %s\n", bx_ui_kind_at(i));
+                printf("custom types accepted: any unused id (sets a config object)\n");
+                fflush(stdout);
+            }
+        }
+        else if(streqi(fam,"new") && n>=2){
+            /* ui new|ID|KIND [parent] - the pane/element constructor */
+            int kind = bx_ui_kind_by_name(p[1]);
+            if(kind<0){ fprintf(stderr,"ui new: unknown kind '%s'\n",p[1]); }
+            else {
+                bx_ui_element_t *e = bx_ui_add(p[0],(bx_ui_kind_t)kind, n>=3?p[2]:"");
+                if(!e) fprintf(stderr,"ui new: bad id '%s' (max %d chars, a-zA-Z0-9_.-) or id already exists\n",p[0],BX_UI_ID_MAX-1);
+                else {
+                    /* An unknown kind becomes a config object: a free-form
+                     * container whose fields can be set and tuned later. */
+                    if(kind>=BX_UI_KIND_CUSTOM){ e->layout=BX_UI_LAYOUT_COLUMN; e->pad_x=8; e->pad_y=8; e->gap=6; }
+                    if(kind==BX_UI_KIND_FRAME || kind==BX_UI_KIND_PANE){ e->w = n>=4?atoi(p[3]):320; e->h = n>=5?atoi(p[4]):240; }
+                }
+            }
+        }
+        else if(streqi(fam,"set") && n>=3){
+            bx_ui_element_t *e = bx_ui_find(p[0]);
+            if(!e) fprintf(stderr,"ui set: no element %s\n",p[0]);
+            else {
+                char *f = resolve(&pr->boxes,p[1]);
+                char *v = resolve(&pr->boxes,p[2]);
+                const char *field = p[1];
+                if(!strcmp(field,"x")) e->x=atof(v);
+                else if(!strcmp(field,"y")) e->y=atof(v);
+                else if(!strcmp(field,"w")) e->w=atof(v);
+                else if(!strcmp(field,"h")) e->h=atof(v);
+                else if(!strcmp(field,"dock")){
+                    if(streqi(v,"left")) e->dock=BX_UI_DOCK_LEFT;
+                    else if(streqi(v,"right")) e->dock=BX_UI_DOCK_RIGHT;
+                    else if(streqi(v,"top")) e->dock=BX_UI_DOCK_TOP;
+                    else if(streqi(v,"bottom")) e->dock=BX_UI_DOCK_BOTTOM;
+                    else if(streqi(v,"center")) e->dock=BX_UI_DOCK_CENTER;
+                    else if(streqi(v,"fill")) e->dock=BX_UI_DOCK_FILL;
+                    else e->dock=BX_UI_DOCK_NONE;
+                }
+                else if(!strcmp(field,"visible")) e->visible=atoi(v)?1:0;
+                else if(!strcmp(field,"text")) snprintf(e->text,sizeof e->text,"%s",v);
+                else if(!strcmp(field,"value")) snprintf(e->value,sizeof e->value,"%s",v);
+                else if(!strcmp(field,"style")) snprintf(e->style,sizeof e->style,"%s",v);
+                else if(!strcmp(field,"theme")){ if(bx_gfx_parse_theme(v,&e->theme)!=0) fprintf(stderr,"ui set: bad theme\n"); }
+                else if(!strcmp(field,"color")){ int ok=0; uint32_t c=bx_gfx_parse_color(v); ok=c!=0||streqi(v,"0"); e->color=c; (void)ok; }
+                else if(!strcmp(field,"alpha")) e->theme.alpha=(uint8_t)atoi(v);
+                else if(!strcmp(field,"gap")) e->gap=atof(v);
+                else if(!strcmp(field,"padx")) e->pad_x=atof(v);
+                else if(!strcmp(field,"pady")) e->pad_y=atof(v);
+                else if(!strcmp(field,"columns")) e->columns=atoi(v);
+                else if(!strcmp(field,"z")) e->z=atoi(v);
+                else if(!strcmp(field,"minw")) e->min_w=atof(v);
+                else if(!strcmp(field,"minh")) e->min_h=atof(v);
+                else if(!strcmp(field,"align")){
+                    if(streqi(v,"start")){ e->align_h=e->align_v=BX_UI_ALIGN_START; }
+                    else if(streqi(v,"center")){ e->align_h=e->align_v=BX_UI_ALIGN_CENTER; }
+                    else if(streqi(v,"end")){ e->align_h=e->align_v=BX_UI_ALIGN_END; }
+                    else if(streqi(v,"stretch")){ e->align_h=e->align_v=BX_UI_ALIGN_STRETCH; }
+                }
+                else if(!strcmp(field,"layout")){
+                    if(streqi(v,"none")) e->layout=BX_UI_LAYOUT_NONE;
+                    else if(streqi(v,"row")) e->layout=BX_UI_LAYOUT_ROW;
+                    else if(streqi(v,"column")||streqi(v,"col")) e->layout=BX_UI_LAYOUT_COLUMN;
+                    else if(streqi(v,"grid")) e->layout=BX_UI_LAYOUT_GRID;
+                    else if(streqi(v,"stack")) e->layout=BX_UI_LAYOUT_STACK;
+                    else if(streqi(v,"wrap")) e->layout=BX_UI_LAYOUT_WRAP;
+                    else fprintf(stderr,"ui set: unknown layout %s\n",v);
+                }
+                else if(!strcmp(field,"justify")){
+                    if(streqi(v,"start")) e->justify=BX_UI_JUSTIFY_START;
+                    else if(streqi(v,"center")) e->justify=BX_UI_JUSTIFY_CENTER;
+                    else if(streqi(v,"end")) e->justify=BX_UI_JUSTIFY_END;
+                    else if(streqi(v,"between")||streqi(v,"space-between")) e->justify=BX_UI_JUSTIFY_SPACE_BETWEEN;
+                }
+                else {
+                    /* Unknown field on a config object: keep it. A custom
+                     * element is a bag of tweakable values by design. */
+                    char tmp[128];
+                    snprintf(tmp,sizeof tmp,"%s=%s",field,v);
+                    /* stored in style slot when it fits, else ignored loudly */
+                    if(strlen(tmp)<sizeof e->style) snprintf(e->style,sizeof e->style,"%s",tmp);
+                    else fprintf(stderr,"ui set: value too long for %s\n",field);
+                }
+                free(f); free(v);
+            }
+        }
+        else if(streqi(fam,"get") && n>=2){
+            bx_ui_element_t *e = bx_ui_find(p[0]);
+            if(!e){ fprintf(stderr,"ui get: no element %s\n",p[0]); }
+            else {
+                /* ui get|ID|FIELD|BOX - the box is optional and defaults to
+                 * the id, matching how the other library getters behave. */
+                const char *field=p[1];
+                /* ID|FIELD[|BOX] - after normalisation both spellings have
+                 * the same shape, so the box is the third field when given. */
+                char *name = n>=3 ? resolve(&pr->boxes,p[2]) : resolve(&pr->boxes,p[0]);
+                char b[160];
+                if(!strcmp(field,"kind")||!strcmp(field,"kindname")) snprintf(b,sizeof b,"%s",bx_ui_kind_name(e->kind));
+                else if(!strcmp(field,"x")) snprintf(b,sizeof b,"%g",e->x);
+                else if(!strcmp(field,"y")) snprintf(b,sizeof b,"%g",e->y);
+                else if(!strcmp(field,"w")) snprintf(b,sizeof b,"%g",e->w);
+                else if(!strcmp(field,"h")) snprintf(b,sizeof b,"%g",e->h);
+                else if(!strcmp(field,"text")) snprintf(b,sizeof b,"%s",e->text);
+                else if(!strcmp(field,"value")) snprintf(b,sizeof b,"%s",e->value);
+                else if(!strcmp(field,"visible")) snprintf(b,sizeof b,"%d",e->visible?1:0);
+                else if(!strcmp(field,"dock")){
+                    static const char *dn[]={"none","left","right","top","bottom","center","fill"};
+                    snprintf(b,sizeof b,"%s",(e->dock>=0&&e->dock<=6)?dn[e->dock]:"none");
+                }
+                else if(!strcmp(field,"z")) snprintf(b,sizeof b,"%d",e->z);
+                else if(!strcmp(field,"children")) snprintf(b,sizeof b,"%d",e->child_count);
+                else if(!strcmp(field,"layout")) snprintf(b,sizeof b,"%d",(int)e->layout);
+                else { fprintf(stderr,"ui get: unknown field %s\n",field); free(name); goto ui_done; }
+                box_set(&pr->boxes,name,b);
+                free(name);
+            }
+        }
+        else if(streqi(fam,"attach") && n>=2){
+            bx_ui_element_t *par=bx_ui_find(p[0]);
+            if(!par) fprintf(stderr,"ui attach: no frame %s\n",p[0]);
+            else {
+                for(int i=1;i<n;i++){
+                    bx_ui_element_t *c=bx_ui_find(p[i]);
+                    if(!c){ fprintf(stderr,"ui attach: no element %s\n",p[i]); continue; }
+                    bx_ui_child_add(par,c->id);
+                    snprintf(c->parent,sizeof c->parent,"%s",par->id);
+                }
+            }
+        }
+        else if(streqi(fam,"detach") && n>=2){
+            bx_ui_element_t *par=bx_ui_find(p[0]);
+            if(par) bx_ui_child_remove(par,p[1]);
+        }
+        else if(streqi(fam,"list")){
+            printf("ui elements (%d):\n", g_bx_ui.count);
+            for(int i=0;i<g_bx_ui.count;i++){
+                bx_ui_element_t *e=&g_bx_ui.els[i];
+                printf("  %-14s %-9s parent=%-12s x=%g y=%g w=%g h=%g %s\n",
+                       e->id, bx_ui_kind_name(e->kind), e->parent[0]?e->parent:"-",
+                       e->x,e->y,e->w,e->h, e->visible?"":"(hidden)");
+            }
+            fflush(stdout);
+        }
+        else if(streqi(fam,"layout") && n>=1){
+            bx_ui_element_t *e=bx_ui_find(p[0]);
+            if(!e) fprintf(stderr,"ui layout: no frame %s\n",p[0]);
+            else { bx_ui_layout_apply(p[0]); printf("ui: layout applied to %s (%d children)\n",p[0],e->child_count); fflush(stdout); }
+        }
+        else if(streqi(fam,"dock") && n>=1){
+            bx_ui_element_t *e=bx_ui_find(p[0]);
+            if(!e) fprintf(stderr,"ui dock: no pane %s\n",p[0]);
+            else { bx_ui_dock_apply(e,bx_gfx_fb_get()); printf("ui: docked %s -> x=%g y=%g w=%g h=%g\n",p[0],e->x,e->y,e->w,e->h); fflush(stdout); }
+        }
+        else if(streqi(fam,"switch") && n>=1){
+            /* pane switch: bring a pane forward and make it the active frame */
+            bx_ui_element_t *e=bx_ui_find(p[0]);
+            if(!e) fprintf(stderr,"ui switch: no pane %s\n",p[0]);
+            else {
+                int top=-1;
+                for(int i=0;i<g_bx_ui.count;i++) if(g_bx_ui.els[i].z>top) top=g_bx_ui.els[i].z;
+                e->z=top+1;
+                snprintf(g_bx_ui.active_frame,sizeof g_bx_ui.active_frame,"%s",p[0]);
+                for(int i=0;i<g_bx_ui.count;i++) g_bx_ui.els[i].focused = !strcmp(g_bx_ui.els[i].id,p[0]);
+                printf("ui: switched to %s (z=%d)\n",p[0],e->z); fflush(stdout);
+            }
+        }
+        else if(streqi(fam,"close") && n>=1){
+            if(bx_ui_remove(p[0])!=0) fprintf(stderr,"ui close: no element %s\n",p[0]);
+            else printf("ui: closed %s\n",p[0]);
+        }
+        /* -------------------------------------------------------- tweens */
+        else if(streqi(fam,"tweenfn")){
+            /* ui tweenfn set|NAME|X1 Y1 X2 Y2   cubic bezier control points,
+             * the same form CSS and iOS use for timing curves
+             * ui tweenfn set|NAME|M B            y = mx + b
+             * ui tweenfn set|NAME|BUILTIN
+             * ui tweenfn list                     */
+            if(n<1 || streqi(p[0],"list")){
+                printf("tween functions (%d):\n", bx_ui_fn_count());
+                for(int i=0;i<bx_ui_fn_count();i++){ const bx_ui_fn_t *f=bx_ui_fn_at(i);
+                    printf("  %-14s kind=%d",f->name,f->kind);
+                    if(f->kind==BX_UI_FN_MXB) printf("  y=%gx+%g",f->p[0],f->p[1]);
+                    else if(f->kind==BX_UI_FN_BEZIER) printf("  bezier(%g %g %g %g)",f->p[0],f->p[1],f->p[2],f->p[3]);
+                    printf("\n"); }
+                fflush(stdout);
+            }
+            else if(streqi(p[0],"set") && n>=2){
+                char *name=xstrndup(p[1],BX_UI_ID_MAX-1);
+                double v[4]={0,0,0,0}; int nv=0;
+                /* Values may arrive as one bar field or several, so accept
+                 * both "0.4 0 0.2 1" and "0.4|0|0.2|1". */
+                for(int i=2;i<n;i++){
+                    const char *q=p[i];
+                    /* Accept the formula spelling too: "y=mx+b 2 0" means the
+                     * same as "2 0", so parsing starts after the formula. */
+                    const char *mx=strstr(q,"mx+b");
+                    if(mx) q = mx+4;
+                    else if(strchr(q,'=')) continue;
+                    while(*q && nv<4){
+                        char *endp=NULL; double d=strtod(q,&endp);
+                        if(endp==q) break;
+                        v[nv++]=d; q=endp;
+                        while(*q==' '||*q==','||*q=='*') q++;
+                    }
+                }
+                if(nv==0){
+                    /* No "=" seen, so the values may be plain: retry raw. */
+                    for(int i=2;i<n && nv<4;i++){
+                        const char *q=p[i];
+                        while(*q && nv<4){
+                            char *endp=NULL; double d=strtod(q,&endp);
+                            if(endp==q) break;
+                            v[nv++]=d; q=endp;
+                            while(*q==' '||*q==',') q++;
+                        }
+                    }
+                }
+                int rc;
+                if(nv==4)      rc=bx_ui_fn_define_bezier(name,v[0],v[1],v[2],v[3]);
+                else if(nv==2) rc=bx_ui_fn_define_mxb(name,v[0],v[1]);
+                else           rc=bx_ui_fn_default(name);
+                if(rc==0) printf("tweenfn: %s defined (%d values)\n",name,nv);
+                else fprintf(stderr,"tweenfn: could not define %s\n",name);
+                free(name); fflush(stdout);
+            }
+            else { fprintf(stderr,"ui tweenfn: set|NAME|... or list\n"); }
+        }
+        else if(streqi(fam,"tween")){
+            /* ui tween|ID|TARGET|PROP|FROM|TO|DURATION|FN
+             * ui tween|ID|to|VALUE     retarget in place
+             * ui tween|ID|cancel
+             * ui tween|list */
+            if(n<1 || streqi(p[0],"list")){
+                printf("tweens (%d running):\n", bx_ui_tween_running());
+                for(int i=0;i<BX_UI_MAX_TWEENS;i++) if(g_bx_ui.tweens[i].used){
+                    bx_ui_tween_t *t=&g_bx_ui.tweens[i];
+                    printf("  %-12s %-10s %-3s from=%g to=%g value=%g fn=%s state=%d\n",
+                           t->id,t->target,t->prop,t->from,t->to,t->value,t->fn,t->state);
+                }
+                fflush(stdout);
+            }
+            else if(n>=2 && streqi(p[1],"cancel")){ bx_ui_tween_cancel(p[0]); }
+            else if(n>=3 && streqi(p[1],"to")){ bx_ui_tween_retarget(p[0],(float)atof(p[2])); }
+            else if(n>=6){
+                char *fn=xstrndup(n>=7?p[6]:"ease-in-out",BX_UI_ID_MAX-1);
+                bx_ui_tween_start(p[0],p[1],p[2],(float)atof(p[3]),(float)atof(p[4]),(float)atof(p[5]),fn);
+                free(fn);
+            }
+            else fprintf(stderr,"ui tween: need ID|TARGET|PROP|FROM|TO|DUR[|FN]\n");
+        }
+        else if(streqi(fam,"frame") && n>=1){
+            /* ui frame|once   - one paced step (uses the real clock)
+             * ui frame|fps|N  - set the pacing rate
+             * ui frame|now    - print the frame counter and dt */
+            if(streqi(p[0],"once")){ g_bx_ui.clock.single_shot=1; bx_ui_frame_step();
+                printf("frame %llu dt=%.4f tweens=%d\n",(unsigned long long)g_bx_ui.clock.frame,g_bx_ui.clock.dt,bx_ui_tween_running()); fflush(stdout); }
+            else if(streqi(p[0],"step") && n>=2){
+                /* Advance by a fixed delta. Real pacing comes from ui frame
+                 * once, but a fixed step makes an animation reproducible in a
+                 * test, which the wall clock cannot be. */
+                float dt=(float)atof(p[1]);
+                g_bx_ui.clock.frame++;
+                g_bx_ui.clock.dt=dt;
+                bx_ui_tween_tick(dt);
+                printf("frame %llu dt=%.4f tweens=%d\n",(unsigned long long)g_bx_ui.clock.frame,dt,bx_ui_tween_running()); fflush(stdout);
+            }
+            else if(streqi(p[0],"fps")&&n>=2){ bx_ui_clock_reset(atoi(p[1])); printf("frame: %d fps\n",g_bx_ui.clock.fps); fflush(stdout); }
+            else if(streqi(p[0],"now")){ printf("frame %llu dt=%.4f\n",(unsigned long long)g_bx_ui.clock.frame,g_bx_ui.clock.dt); fflush(stdout); }
+        }
+        else if(streqi(fam,"ease")){
+            /* ui ease|FN|T|BOX [T|BOX ...] - sample an easing function, so the
+             * curve can be inspected without running an animation. The box may
+             * be its own field or trail the number in the same field. */
+            const char *fn = n>=1 && *p[0] ? p[0] : "ease-in-out";
+            printf("ease %s:",fn);
+            for(int i=1;i<n;i++){
+                const char *q=p[i];
+                while(*q){
+                    char *endp=NULL; double t=strtod(q,&endp);
+                    if(endp==q) break;
+                    double v=bx_ui_ease(fn,t);
+                    printf(" %g->%.4f",t,v);
+                    const char *r=endp;
+                    while(*r==' ') r++;
+                    /* box name trailing in this same field */
+                    if(*r && !isdigit((unsigned char)*r) && *r!='-' && *r!='.' && *r!=','){
+                        char *nm=xstrndup(r,BX_UI_ID_MAX-1);
+                        char buf[64]; snprintf(buf,sizeof buf,"%.6g",v);
+                        char *dn=resolve(&pr->boxes,nm);
+                        box_set(&pr->boxes,dn,buf);
+                        free(dn); free(nm);
+                        break;
+                    }
+                    /* box name in the next field */
+                    if(i+1<n){
+                        const char *nx=p[i+1];
+                        if(*nx && !isdigit((unsigned char)*nx) && *nx!='-' && *nx!='.' && *nx!=','){
+                            char buf[64]; snprintf(buf,sizeof buf,"%.6g",v);
+                            char *dn=resolve(&pr->boxes,nx);
+                            box_set(&pr->boxes,dn,buf);
+                            free(dn);
+                            i++;
+                        }
+                    }
+                    q=endp;
+                    while(*q==' '||*q==',') q++;
+                }
+            }
+            printf("\n"); fflush(stdout);
+        }
+        else { printf("ui commands: init | kinds|list | new|ID|KIND [parent] | set|ID|field|val | get|ID|field | attach|FRAME|ID... | detach|FRAME|ID | list | layout|FRAME | dock|PANE | switch|PANE | close|ID | tween|ID|TARGET|PROP|FROM|TO|DUR|FN | tween|ID|to|V | tween|ID|cancel | tween|list | tweenfn|set|NAME|... | tweenfn|list | frame|once | frame|step|SECS | frame|fps|N | ease|FN|T...\n"); }
+ui_done:
+        free_parts(p,n); free(substr);
+    }
+#else
+    else if (!strcmp(cmd,"ui") || !strncmp(cmd,"ui.",3)) {
+        fprintf(stderr,"ui: the UI layer is not available in an embedded build\n");
+    }
+#endif
     else if (!strncmp(cmd,"high.gfx.",9)) {
         if(streqi(box_get(&pr->boxes,"lib_active_gfx"),"1")){
             const char *sub=cmd+9; int n; char **p=split_bars(args,&n);
