@@ -71,6 +71,25 @@ static const bx_ui_kind_row_t g_kinds[] = {
     { "statusbar", BX_UI_KIND_STATUSBAR }, { "sidebar", BX_UI_KIND_SIDEBAR },
     { "modal", BX_UI_KIND_MODAL }, { "dialog", BX_UI_KIND_MODAL },
     { "tooltip", BX_UI_KIND_TOOLTIP }, { "tween", BX_UI_KIND_TWEEN },
+
+    /* Controls that arrived with the input layer, plus the containers the
+     * common ones are built from. Aliases are deliberate: bx code reads
+     * better as card or alert than as panel with a different style. */
+    { "switch", BX_UI_KIND_SWITCH }, { "toggle", BX_UI_KIND_SWITCH },
+    { "stepper", BX_UI_KIND_STEPPER }, { "spinnerbox", BX_UI_KIND_STEPPER },
+    { "combobox", BX_UI_KIND_COMBOBOX }, { "combo", BX_UI_KIND_COMBOBOX },
+    { "groupbox", BX_UI_KIND_GROUPBOX }, { "group", BX_UI_KIND_GROUPBOX },
+    { "field", BX_UI_KIND_FIELD }, { "fieldbox", BX_UI_KIND_FIELD },
+    { "divider", BX_UI_KIND_DIVIDER }, { "rule", BX_UI_KIND_DIVIDER },
+    { "separator", BX_UI_KIND_DIVIDER }, { "hr", BX_UI_KIND_DIVIDER },
+    { "badge", BX_UI_KIND_BADGE }, { "chip", BX_UI_KIND_CHIP },
+    { "tag", BX_UI_KIND_CHIP }, { "pill", BX_UI_KIND_CHIP },
+    { "alert", BX_UI_KIND_ALERT }, { "notice", BX_UI_KIND_ALERT },
+    { "card", BX_UI_KIND_CARD }, { "panel2", BX_UI_KIND_CARD },
+    { "header", BX_UI_KIND_HEADER }, { "footer", BX_UI_KIND_FOOTER },
+    { "breadcrumb", BX_UI_KIND_BREADCRUMB }, { "crumbs", BX_UI_KIND_BREADCRUMB },
+    { "pagination", BX_UI_KIND_PAGINATION }, { "pager", BX_UI_KIND_PAGINATION },
+    { "drawer", BX_UI_KIND_DRAWER }, { "flyout", BX_UI_KIND_DRAWER },
     { NULL, 0 }
 };
 
@@ -363,6 +382,9 @@ static void ui_frame_commit(double dt) {
     c->last = c->now;
     c->frame++;
     bx_ui_tween_tick((float)dt);
+    /* Input first, then drivers: a driver is allowed to take a hover or press
+     * amount over, and it should win, because it is the later writer. */
+    bx_ui_input_tick(dt);
     bx_ui_apply_drivers(c->elapsed);
 }
 
@@ -698,6 +720,8 @@ static uint32_t ui_fill_for(const bx_ui_element_t *e) {
         case BX_UI_KIND_SLIDER:
         case BX_UI_KIND_PROGRESS:
         case BX_UI_KIND_SCROLL: return BX_UI_C_INSET;
+        case BX_UI_KIND_BADGE: return BX_UI_C_ACCENT;
+        case BX_UI_KIND_CHIP: return BX_UI_C_INSET;
         case BX_UI_KIND_CHECKBOX:
         case BX_UI_KIND_RADIO: return BX_UI_C_BG;
         default: return BX_UI_C_BG;
@@ -806,8 +830,13 @@ static int ui_draw_one(bx_gfx_fb_t *fb, bx_ui_element_t *e) {
              * rather than fading alpha: a translucent button over a panel
              * would show the panel through it and read as lighter, not
              * pressed. */
-            if (e->pressed) c = bx_gfx_color_lerp(c, BX_UI_C_BG, 96);
-            else if (e->hovered) c = bx_gfx_color_lerp(c, BX_UI_C_ACCENT, 60);
+            /* Read the eased amounts, not the flags. The flags are for logic
+             * and for scripts; the visual weight comes from how far the value
+             * has actually got, which is what makes a hover fade. */
+            int hv = (int)(e->hover * 60.0f);
+            if (hv > 0) c = bx_gfx_color_lerp(c, BX_UI_C_ACCENT, hv);
+            int pv = (int)(e->press * 96.0f);
+            if (pv > 0) c = bx_gfx_color_lerp(c, BX_UI_C_BG, pv);
             bx_ui_element_t tmp = *e;
             tmp.material = BX_UI_MAT_MATTE;
             tmp.color = c;
@@ -876,6 +905,72 @@ static int ui_draw_one(bx_gfx_fb_t *fb, bx_ui_element_t *e) {
                 bx_gfx_text(fb, x + r * 2 + 6, y + (h - bx_gfx_text_h()) / 2, e->text, BX_UI_C_TEXT);
             break;
         }
+        case BX_UI_KIND_SWITCH: {
+            /* A pill with a knob. The knob's travel is the eased press amount,
+             * so the switch can be thrown the same way everything else moves:
+             * by changing the amount. */
+            int32_t th = h - 4; if (th < 6) th = 6;
+            int32_t tr = th / 2;
+            int32_t tx = x + (int32_t)((double)w * (e->selected ? 1.0 : 0.0)) - tr;
+            uint32_t track = e->selected ? BX_UI_C_ACCENT : BX_UI_C_INSET;
+            int32_t hv = (int)(e->hover * 120.0f);
+            if (hv > 0) track = bx_gfx_color_lerp(track, BX_UI_C_ACCENT, hv);
+            bx_gfx_rect_round(fb, x, y + 2, w, th, tr, track);
+            bx_gfx_circle(fb, tx, y + 2 + tr, tr - 1,
+                          e->selected ? BX_UI_C_BG : BX_UI_C_TEXT_DIM);
+            if (e->text[0])
+                bx_gfx_text(fb, x + w + 6, y + (h - bx_gfx_text_h()) / 2, e->text, BX_UI_C_TEXT);
+            break;
+        }
+        case BX_UI_KIND_STEPPER: {
+            /* Minus and plus either side of a number, which is a slider that
+             * snaps to whole values. */
+            int32_t bw = h - 2;
+            bx_gfx_rect_round(fb, x, y, bw, h, 3, BX_UI_C_INSET);
+            bx_gfx_rect_round(fb, x + w - bw, y, bw, h, 3, BX_UI_C_INSET);
+            bx_gfx_line(fb, x + bw / 2 - 3, y + h / 2, x + bw / 2 + 3, y + h / 2, BX_UI_C_TEXT);
+            bx_gfx_line(fb, x + w - bw / 2 - 3, y + h / 2, x + w - bw / 2 + 3, y + h / 2, BX_UI_C_TEXT);
+            bx_gfx_line(fb, x + w - bw / 2, y + h / 2 - 3, x + w - bw / 2, y + h / 2 + 3, BX_UI_C_TEXT);
+            double v = ui_fraction(e);
+            int32_t cx = x + bw + (int32_t)((double)(w - bw * 2) * v);
+            bx_gfx_text(fb, cx - 6, y + (h - bx_gfx_text_h()) / 2, e->text, BX_UI_C_TEXT);
+            break;
+        }
+        case BX_UI_KIND_BADGE:
+        case BX_UI_KIND_CHIP: {
+            /* A rounded pill of text. The width follows the text so a chip
+             * never needs its width set by hand. */
+            int32_t tw = bx_gfx_text_w(e->text);
+            int32_t cw = e->w > 0 ? e->w : tw + 12;
+            uint32_t base = ui_fill_for(e);
+            int32_t r = e->radius > 0 ? e->radius : (h > 2 ? h / 2 : 2);
+            bx_gfx_rect_round(fb, x, y, cw, h, r, base);
+            bx_gfx_rect_round_outline(fb, x, y, cw, h, r, BX_UI_C_BORDER);
+            bx_gfx_text(fb, x + (cw - tw) / 2, y + (h - bx_gfx_text_h()) / 2,
+                        e->text, e->kind == BX_UI_KIND_BADGE ? BX_UI_C_BG : BX_UI_C_TEXT);
+            break;
+        }
+        case BX_UI_KIND_DIVIDER: {
+            uint32_t c = BX_UI_C_BORDER;
+            int hz = (e->w >= e->h);
+            if (hz) bx_gfx_line(fb, x, y + h / 2, x + w, y + h / 2, c);
+            else    bx_gfx_line(fb, x + w / 2, y, x + w / 2, y + h, c);
+            break;
+        }
+        case BX_UI_KIND_CARD:
+        case BX_UI_KIND_ALERT:
+        case BX_UI_KIND_GROUPBOX:
+        case BX_UI_KIND_FIELD:
+        case BX_UI_KIND_HEADER:
+        case BX_UI_KIND_FOOTER:
+        case BX_UI_KIND_DRAWER:
+        case BX_UI_KIND_COMBOBOX:
+        case BX_UI_KIND_BREADCRUMB:
+        case BX_UI_KIND_PAGINATION:
+            ui_surface(fb, e, ui_fill_for(e));
+            if (e->text[0] && e->kind != BX_UI_KIND_FIELD)
+                bx_gfx_text(fb, x + 6, y + (h - bx_gfx_text_h()) / 2, e->text, BX_UI_C_TEXT);
+            break;
         case BX_UI_KIND_TABS:
             bx_gfx_rect(fb, x, y, w, h, BX_UI_C_BG);
             bx_gfx_line(fb, x, y + h - 1, x + w, y + h - 1, BX_UI_C_BORDER);
@@ -1019,6 +1114,9 @@ int bx_ui_set_field(bx_ui_element_t *e, const char *field, const char *value) {
     else if (!strcmp(field, "columns")) e->columns = atoi(value);
     else if (!strcmp(field, "z")) e->z = atoi(value);
     else if (!strcmp(field, "radius")) e->radius = atoi(value);
+    else if (!strcmp(field, "hover")) e->hover = (float)d;
+    else if (!strcmp(field, "press")) e->press = (float)d;
+    else if (!strcmp(field, "focusv")) e->focusv = (float)d;
     else if (!strcmp(field, "alpha")) e->theme.alpha = (uint8_t)d;
     else if (!strcmp(field, "scroll")) e->scroll = (float)d;
     else if (!strcmp(field, "value")) snprintf(e->value, sizeof e->value, "%s", value);
@@ -1149,6 +1247,16 @@ int bx_ui_get_field(const bx_ui_element_t *e, const char *field, char *buf, size
     else if (!strcmp(field,"hovered")) snprintf(buf,cap,"%d",e->hovered?1:0);
     else if (!strcmp(field,"pressed")) snprintf(buf,cap,"%d",e->pressed?1:0);
     else if (!strcmp(field,"focused")) snprintf(buf,cap,"%d",e->focused?1:0);
+    /* The eased amounts, not the flags. A driver can read them and so can a
+     * script, which is what makes hover something a program can animate. */
+    else if (!strcmp(field,"hover")) snprintf(buf,cap,"%g",e->hover);
+    else if (!strcmp(field,"press")) snprintf(buf,cap,"%g",e->press);
+    else if (!strcmp(field,"focusv")) snprintf(buf,cap,"%g",e->focusv);
+    /* The same three as whole percentages. bx compares integers, so a 0..1
+     * amount is not something a script can test; 0..100 is. */
+    else if (!strcmp(field,"hoverpct")) snprintf(buf,cap,"%d",(int)(e->hover*100.0f+0.5f));
+    else if (!strcmp(field,"presspct")) snprintf(buf,cap,"%d",(int)(e->press*100.0f+0.5f));
+    else if (!strcmp(field,"focuspct")) snprintf(buf,cap,"%d",(int)(e->focusv*100.0f+0.5f));
     else if (!strcmp(field,"children")) snprintf(buf,cap,"%d",e->child_count);
     else if (!strcmp(field,"parent")) snprintf(buf,cap,"%s",e->parent);
     else if (!strcmp(field,"color")) {
@@ -1505,4 +1613,257 @@ void bx_ui_drive_remove(const char *id, const char *prop) {
             i--;
         }
     }
+}
+
+/* ---------------------------------------------------------------- input */
+
+/* Anything that takes a pointer. A container is a hit target only when one
+ * of its children is not covering the same point, which bx_ui_hit already
+ * handles, so the only question here is what responds at all. */
+static int ui_interactive(const bx_ui_element_t *e) {
+    if (!e || !e->visible || e->disabled) return 0;
+    switch (e->kind) {
+        case BX_UI_KIND_BUTTON:
+        case BX_UI_KIND_CHECKBOX:
+        case BX_UI_KIND_RADIO:
+        case BX_UI_KIND_SWITCH:
+        case BX_UI_KIND_STEPPER:
+        case BX_UI_KIND_COMBOBOX:
+        case BX_UI_KIND_CHIP:
+        case BX_UI_KIND_PAGINATION:
+        case BX_UI_KIND_SLIDER:
+        case BX_UI_KIND_TEXTBOX:
+        case BX_UI_KIND_LIST:
+        case BX_UI_KIND_TAB:
+        case BX_UI_KIND_MENU:
+        case BX_UI_KIND_TREE:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+static void ui_set_target(bx_ui_element_t *e, float hover, float press) {
+    if (!e) return;
+    e->hover_target = hover;
+    e->press_target = press;
+}
+
+void bx_ui_input_release(void) {
+    for (int i = 0; i < g_bx_ui.count; i++) {
+        bx_ui_element_t *e = &g_bx_ui.els[i];
+        e->hover_target = 0.0f;
+        e->press_target = 0.0f;
+    }
+    g_bx_ui.capture[0] = 0;
+    g_bx_ui.hover_id[0] = 0;
+}
+
+/* Chase the targets. This is the whole of the feel of the UI: one rate
+ * constant, applied to every interactive element, and nothing else. */
+void bx_ui_input_tick(double dt) {
+    if (dt <= 0) return;
+    /* Exponential approach, framed so a full-scale move settles in roughly
+     * 4/BX_UI_INPUT_RATE seconds whatever the frame rate. Independent of dt,
+     * so a slow machine and a fast one look the same. */
+    double k = 1.0 - exp(-BX_UI_INPUT_RATE * dt);
+    for (int i = 0; i < g_bx_ui.count; i++) {
+        bx_ui_element_t *e = &g_bx_ui.els[i];
+        e->hover  += (float)((double)e->hover_target  - e->hover)  * k;
+        e->press  += (float)((double)e->press_target  - e->press)  * k;
+        e->focusv += (float)((double)e->focus_target  - e->focusv) * k;
+        e->hovered = e->hover_target > 0.5f;
+        e->pressed = e->press_target > 0.5f;
+        e->focused = e->focus_target > 0.5f;
+    }
+}
+
+bx_ui_element_t *bx_ui_pointer(float x, float y, int button, bx_ui_ptr_action_t action) {
+    g_bx_ui.pointer_x = x;
+    g_bx_ui.pointer_y = y;
+    bx_ui_element_t *hit = bx_ui_hit(x, y);
+    if (hit && !ui_interactive(hit)) hit = NULL;
+
+    /* While a drag is live the element that was pressed keeps it, even if the
+     * pointer has left it: a slider dragged past its end must not snap back
+     * to the pointer's position on the next move. */
+    bx_ui_element_t *held = g_bx_ui.capture[0] ? bx_ui_find(g_bx_ui.capture) : NULL;
+    if (held) hit = held;
+
+    switch (action) {
+        case BX_UI_PTR_MOVE:
+            for (int i = 0; i < g_bx_ui.count; i++)
+                ui_set_target(&g_bx_ui.els[i], 0.0f, g_bx_ui.els[i].press_target);
+            if (hit) {
+                hit->hover_target = 1.0f;
+                /* Hovering a child means hovering its container, so a panel
+                 * can light up under the pointer without eating the event. */
+                for (const char *p = hit->parent; *p;) {
+                    bx_ui_element_t *pe = bx_ui_find(p);
+                    if (!pe) break;
+                    pe->hover_target = 0.45f;
+                    p = pe->parent;
+                }
+            }
+            break;
+
+        case BX_UI_PTR_DOWN:
+            if (hit) {
+                hit->press_target = 1.0f;
+                hit->hover_target = 1.0f;
+                snprintf(g_bx_ui.capture, sizeof g_bx_ui.capture, "%s", hit->id);
+                bx_ui_focus(hit->id);
+                /* A checkbox and a switch change on the press, not the
+                 * release: the release may never come, if the pointer drags
+                 * off. A button waits for the release so a drag away cancels. */
+                if (hit->kind == BX_UI_KIND_CHECKBOX || hit->kind == BX_UI_KIND_SWITCH)
+                    hit->selected = !hit->selected;
+            }
+            break;
+
+        case BX_UI_PTR_UP: {
+            bx_ui_element_t *up = bx_ui_hit(x, y);
+            if (!ui_interactive(up)) up = NULL;
+            if (held) held->press_target = 0.0f;
+            g_bx_ui.capture[0] = 0;
+            /* A click only counts if the release is on the element that took
+             * the press. Anything else is a cancelled click. */
+            if (held && up == held) {
+                switch (held->kind) {
+                    case BX_UI_KIND_CHECKBOX:
+                    case BX_UI_KIND_SWITCH:
+                        break;               /* already toggled on press */
+                    case BX_UI_KIND_RADIO:
+                    case BX_UI_KIND_TAB:
+                        held->selected = 1;
+                        break;
+                    case BX_UI_KIND_SLIDER: {
+                        /* Click-to-position: the click sets where the handle
+                         * is, which a drag alone would not. */
+                        double f = (x - held->x) / (held->w > 0 ? held->w : 1);
+                        if (f < 0) f = 0;
+                        if (f > 1) f = 1;
+                        if (held->w > 0) held->scroll = (float)f;
+                        break;
+                    }
+                    default:
+                        held->selected = !held->selected;
+                        break;
+                }
+            }
+            return up;
+        }
+
+        case BX_UI_PTR_WHEEL: {
+            bx_ui_element_t *w = hit;
+            if (!w && g_bx_ui.focused_id[0]) w = bx_ui_find(g_bx_ui.focused_id);
+            if (!w) break;
+            /* Scroll is a property too, so a script can set it and a driver
+             * can animate it; the wheel just nudges it. */
+            float delta = (button > 0) ? 0.08f : -0.08f;
+            double v = (double)w->scroll + delta;
+            if (v < 0) v = 0;
+            if (v > 1) v = 1;
+            w->scroll = (float)v;
+            break;
+        }
+    }
+    return hit;
+}
+
+bx_ui_element_t *bx_ui_focus(const char *id) {
+    for (int i = 0; i < g_bx_ui.count; i++) g_bx_ui.els[i].focus_target = 0.0f;
+    if (!id || !*id) { g_bx_ui.focused_id[0] = 0; return NULL; }
+    bx_ui_element_t *e = bx_ui_find(id);
+    if (!e || !ui_interactive(e)) return NULL;
+    e->focus_target = 1.0f;
+    snprintf(g_bx_ui.focused_id, sizeof g_bx_ui.focused_id, "%s", id);
+    return e;
+}
+
+bx_ui_element_t *bx_ui_focused(void) {
+    return g_bx_ui.focused_id[0] ? bx_ui_find(g_bx_ui.focused_id) : NULL;
+}
+
+bx_ui_element_t *bx_ui_focus_next(const char *from, int back) {
+    /* Tab walks the elements in creation order, which is creation order in
+     * every layout, so focus follows what the eye sees without the caller
+     * having to know the tree. */
+    int start = 0;
+    if (from && *from) {
+        for (int i = 0; i < g_bx_ui.count; i++)
+            if (streqi(g_bx_ui.els[i].id, from)) { start = i + (back ? -1 : 1); break; }
+    }
+    int n = g_bx_ui.count;
+    for (int k = 0; k < n; k++) {
+        int i = ((start + k * (back ? -1 : 1)) % n + n) % n;
+        if (ui_interactive(&g_bx_ui.els[i])) return &g_bx_ui.els[i];
+    }
+    return NULL;
+}
+
+int bx_ui_key(int key, const char *action) {
+    int shift = (key >= 'A' && key <= 'Z');
+    int lower = shift ? key + 32 : key;
+    /* The key code carries the meaning, not the action: "backspace" arrives
+     * as the code 8 with whatever action the backend reported. */
+    int back = (key == 8);
+
+    if (key == 25) {                                  /* shift-tab */
+        bx_ui_element_t *cur = bx_ui_focused();
+        bx_ui_element_t *nx = bx_ui_focus_next(cur ? cur->id : NULL, 1);
+        if (nx) { bx_ui_focus(nx->id); return 1; }
+        return 0;
+    }
+    if (key == 9 || streqi(action, "tab")) {
+        bx_ui_element_t *cur = bx_ui_focused();
+        bx_ui_element_t *nx = bx_ui_focus_next(cur ? cur->id : NULL, 0);
+        if (nx) { bx_ui_focus(nx->id); return 1; }
+        return 0;
+    }
+    if (streqi(action, "shifttab")) {
+        bx_ui_element_t *cur = bx_ui_focused();
+        bx_ui_element_t *nx = bx_ui_focus_next(cur ? cur->id : NULL, 1);
+        if (nx) { bx_ui_focus(nx->id); return 1; }
+        return 0;
+    }
+    if (streqi(action, "escape")) {
+        bx_ui_focus(NULL);
+        return 1;
+    }
+
+    bx_ui_element_t *e = bx_ui_focused();
+    if (!e) return 0;
+
+    if (e->kind == BX_UI_KIND_TEXTBOX) {
+        if (back) {
+            size_t l = strlen(e->text);
+            if (l) e->text[l - 1] = 0;
+            return 1;
+        }
+        if (lower == 13 || lower == 10) return 1;    /* newline ends the edit */
+        if (lower == 27) return 1;                   /* escape ends the edit */
+        if (key == 9) return 1;
+        if (lower < 32 || lower > 126) return 0;
+        size_t l = strlen(e->text);
+        if (l + 2 < sizeof e->text) {
+            e->text[l] = (char)lower;
+            e->text[l + 1] = 0;
+            return 1;
+        }
+        return 0;
+    }
+
+    /* Arrow keys nudge the focused control, which is what a focused control
+     * has to do or focus is decoration. */
+    if (e->kind == BX_UI_KIND_SLIDER || e->kind == BX_UI_KIND_PROGRESS) {
+        if (lower == 37) { e->scroll = (float)(e->scroll - 0.05 < 0 ? 0 : e->scroll - 0.05); return 1; }
+        if (lower == 39) { e->scroll = (float)(e->scroll + 0.05 > 1 ? 1 : e->scroll + 0.05); return 1; }
+    }
+    if (lower == 13 || lower == 32) {
+        if (e->kind == BX_UI_KIND_CHECKBOX || e->kind == BX_UI_KIND_SWITCH) e->selected = !e->selected;
+        else e->selected = !e->selected;
+        return 1;
+    }
+    return 0;
 }

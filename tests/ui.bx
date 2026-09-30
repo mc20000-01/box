@@ -465,6 +465,114 @@ jump $ui_after_tex|m
 
 premark ui_after_tex
 
+// ------------------------------------------------------------- input
+// The input layer is fed coordinates and key names, never a device, so these
+// are the same calls a windowing backend would make.
+
+premark ui_input
+ui.init
+ui.new|win|frame
+ui.set|win|x|0
+ui.set|win|y|0
+ui.set|win|w|200
+ui.set|win|h|120
+ui.new|ok|button|win
+ui.set|ok|x|20
+ui.set|ok|y|20
+ui.set|ok|w|80
+ui.set|ok|h|24
+ui.set|ok|text|Press
+// Over empty space nothing interactive is hit, so the frame is not a target.
+ui.pointer|180|100|move|hit_box
+box ui_name|a pointer over empty space hits nothing interactive
+box ui_got|$hit_box
+box ui_want|
+box ui_next|ui_input_hit
+jump uicheck|m
+
+premark ui_input_hit
+ui.pointer|60|32|move|hit_box
+box ui_name|a pointer over a button hits that button
+box ui_got|$hit_box
+box ui_want|ok
+box ui_next|ui_input_press
+jump uicheck|m
+
+premark ui_input_press
+// A press is not instantaneous: the amount eases toward 1 over the frame.
+// Testing the amount rather than the flag is what makes this check about the
+// feel rather than about bookkeeping.
+ui.pointer|60|32|down|hit_box
+ui.frame|step|0.05
+ui.get|ok|presspct|p_early
+// A snap would be 100 after one frame and a dead press would be 0. Anything
+// in between is the press partway there, which is the whole claim.
+jumpif $p_early|>=|95|ui_press_bad|m
+jumpif $p_early|<=|5|ui_press_bad|m
+box ui_name|a press amount eases in over the frame instead of snapping
+box ui_got|1
+box ui_want|1
+box ui_next|ui_input_cancel
+jump uicheck|m
+
+premark ui_press_bad
+box ui_name|a press amount eases in over the frame instead of snapping
+box ui_got|$p_early
+box ui_want|6 to 94
+box ui_next|ui_input_cancel
+jump uicheck|m
+
+premark ui_input_cancel
+// Releasing away from the element cancels the click. This is what stops a
+// drag off a button from firing it.
+ui.pointer|180|100|up|hit_box
+box ui_name|a releasing off the button reports nothing hit
+box ui_got|$hit_box
+box ui_want|
+box ui_next|ui_input_click
+jump uicheck|m
+
+premark ui_input_click
+ui.pointer|60|32|down|hit_box
+ui.pointer|60|32|up|hit_box
+ui.get|ok|selected|sel
+box ui_name|a press and release on the same element selects it
+box ui_got|$sel
+box ui_want|1
+box ui_next|ui_input_type
+jump uicheck|m
+
+premark ui_input_type
+// Typing goes to whatever holds focus, and focus follows the pointer.
+ui.new|tb|textbox|win
+ui.set|tb|x|20
+ui.set|tb|y|60
+ui.set|tb|w|120
+ui.set|tb|h|20
+ui.pointer|80|70|down|hit_box
+ui.key|a|down|
+ui.key|b|down|
+ui.key|backspace|down|
+ui.key|c|down|
+ui.get|tb|text|typed
+box ui_name|a typing edits the focused textbox, backspace included
+box ui_got|$typed
+box ui_want|ac
+box ui_next|ui_input_drive
+jump uicheck|m
+
+premark ui_input_drive
+// Hover is an ordinary property, so a driver can take it over. Nothing is
+// touching the pointer here: the amount is being computed, not measured.
+ui.drive|ok|hover|const|0.75
+ui.frame|step|0.5
+ui.get|ok|hoverpct|hv
+box ui_name|a driver can drive the hover amount with no pointer involved
+box ui_got|$hv
+box ui_want|75
+box ui_next|ui_last
+jump uicheck|m
+
 premark ui_last
 say ---
 say ui tests done, failures: $ui_fail

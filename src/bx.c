@@ -986,6 +986,66 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                 }
             }
         }
+        /* Input. Nothing here reads a device: a platform, a script or a test
+         * all feed the same calls, so the UI can be driven without a
+         * windowing library and still behave the same when one exists. */
+        else if(streqi(fam,"pointer") && n>=2){
+            /* pointer|X|Y|ACTION[BUTTON][BOX]
+             * ACTION is move, down, up or wheel. BUTTON is the wheel direction
+             * for wheel and is otherwise ignored, so a caller that only wants
+             * the hit id may leave it out: BOX is taken as a number field, not
+             * a fixed slot. BOX gets the id that was hit, or empty when the
+             * pointer was over nothing interactive. */
+            int act = BX_UI_PTR_MOVE;
+            const char *a = p[n>=3?2:0];
+            if (streqi(a,"move")) act = BX_UI_PTR_MOVE;
+            else if (streqi(a,"down")) act = BX_UI_PTR_DOWN;
+            else if (streqi(a,"up")) act = BX_UI_PTR_UP;
+            else if (streqi(a,"wheel")) act = BX_UI_PTR_WHEEL;
+            else fprintf(stderr,"ui pointer: action must be move, down, up or wheel\n");
+            int idx = 3, btn = 0;
+            if (n > idx && is_number(p[idx])) btn = atoi(p[idx++]);
+            bx_ui_element_t *e = bx_ui_pointer(atof(p[0]), atof(p[1]), btn, act);
+            if (n > idx && p[idx]) { char *nm = resolve(&pr->boxes,p[idx]);
+                box_set(&pr->boxes,nm, e?e->id:""); free(nm); }
+        }
+        else if(streqi(fam,"key") && n>=2){
+            /* key|KEYNAME|ACTION[|BOX] - KEYNAME is a printable character, or
+             * one of tab, shifttab, escape, left, right, up, down. */
+            int key = 0;
+            const char *k = p[0];
+            if (streqi(k,"tab")) key = '	';
+            else if (streqi(k,"escape")||streqi(k,"esc")) key = 27;
+            else if (streqi(k,"shifttab")) key = '	';
+            else if (streqi(k,"left")) key = 37;
+            else if (streqi(k,"right")) key = 39;
+            else if (streqi(k,"up")) key = 38;
+            else if (streqi(k,"down")) key = 40;
+            else if (streqi(k,"enter")||streqi(k,"return")) key = 13;
+            else if (streqi(k,"space")) key = 32;
+            else if (streqi(k,"backspace")) key = 8;
+            else key = (unsigned char)k[0];
+            const char *act = n>=3?p[1]:"down";
+            int handled = bx_ui_key(key, act);
+            if (n>=3 && p[2]) { char *nm = resolve(&pr->boxes,p[2]);
+                box_set(&pr->boxes,nm, handled?"1":"0"); free(nm); }
+        }
+        else if(streqi(fam,"focus") && n>=1){
+            /* focus|ID [BOX] or focus|next|back */
+            bx_ui_element_t *e;
+            if (streqi(p[0],"next")||streqi(p[0],"prev")) {
+                bx_ui_element_t *cur = bx_ui_focused();
+                e = bx_ui_focus_next(cur?cur->id:NULL, streqi(p[0],"prev"));
+                if (e) e = bx_ui_focus(e->id);
+            } else {
+                e = bx_ui_focus(p[0]);
+            }
+            if (n>=2 && p[1]) { char *nm = resolve(&pr->boxes,p[1]);
+                box_set(&pr->boxes,nm, e?e->id:""); free(nm); }
+        }
+        else if(streqi(fam,"input") && n>=1 && streqi(p[0],"release")){
+            bx_ui_input_release();
+        }
         /* Any property of any element can be a function of time. mathfn.set
          * defines the function, drive attaches it to a property, and the
          * frame step evaluates it before layout. Textures are the same idea
@@ -1237,13 +1297,29 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
             bx_ui_element_t *e = bx_ui_hit((float)atof(p[0]),(float)atof(p[1]));
             char *nm = n>=3 ? resolve(&pr->boxes,p[2]) : NULL;
             const char *val = e ? e->id : "";
+            /* Like ui press, ui hit sets state outright rather than easing
+             * toward it: it is the scripted form of a pointer move, and a
+             * script that asks "what is under here" and then renders wants to
+             * see the answer. The amount is set too, so the render and the
+             * flag cannot disagree. */
             if (e) {
                 e->hovered = 1;
+                e->hover = 1.0f;
+                e->hover_target = 1.0f;
                 /* Everything else stops being hovered, so hover follows the
                  * pointer instead of sticking to whatever it last touched. */
-                for (int i=0;i<g_bx_ui.count;i++) if (g_bx_ui.els[i].id[0] && strcmp(g_bx_ui.els[i].id,e->id)) g_bx_ui.els[i].hovered=0;
+                for (int i=0;i<g_bx_ui.count;i++)
+                    if (g_bx_ui.els[i].id[0] && strcmp(g_bx_ui.els[i].id,e->id)) {
+                        g_bx_ui.els[i].hovered=0;
+                        g_bx_ui.els[i].hover=0.0f;
+                        g_bx_ui.els[i].hover_target=0.0f;
+                    }
             } else {
-                for (int i=0;i<g_bx_ui.count;i++) g_bx_ui.els[i].hovered=0;
+                for (int i=0;i<g_bx_ui.count;i++) {
+                    g_bx_ui.els[i].hovered=0;
+                    g_bx_ui.els[i].hover=0.0f;
+                    g_bx_ui.els[i].hover_target=0.0f;
+                }
             }
             box_set(&pr->boxes, nm ? nm : "ui_hit", val);
             free(nm);
@@ -1258,7 +1334,17 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
             /* ui press|ID[|STATE] - absent STATE means pressed, which is what
              * a click does. The flag is the second argument, not the third:
              * the bar form has already shifted the subcommand off the front. */
-            else { e->pressed = n>=2 ? atoi(p[1])!=0 : 1; printf("ui press: %s pressed=%d\n", e->id, e->pressed); }
+            else {
+                /* Setting it by hand is instant, deliberately: a script that
+                 * says a button is pressed and then renders should see it
+                 * pressed. Real pointer input eases into the same state, and
+                 * a script can get that too by driving the amount. */
+                int on = n>=2 ? atoi(p[1])!=0 : 1;
+                e->pressed = on;
+                e->press = on ? 1.0f : 0.0f;
+                e->press_target = e->press;
+                printf("ui press: %s pressed=%d\n", e->id, e->pressed);
+            }
             fflush(stdout);
         }
         else if(streqi(fam,"select") && n>=2){

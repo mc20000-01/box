@@ -50,6 +50,9 @@ extern "C" {
 /* Procedural textures, computed per pixel from math. */
 #define BX_UI_MAX_TEXTURES 64
 #define BX_UI_MAX_FNS2    64
+/* How fast hover and press chase their targets. A rate, not a duration: one
+ * number covers every speed, and a zero dt costs nothing. */
+#define BX_UI_INPUT_RATE   12.0
 #define BX_UI_FPS_DEFAULT 60
 
 /* Element kinds. Custom kinds start at BX_UI_KIND_CUSTOM so a user element
@@ -99,6 +102,27 @@ typedef enum {
     BX_UI_KIND_MODAL,
     BX_UI_KIND_TOOLTIP,
     BX_UI_KIND_TWEEN,         /* a tween object, also an element */
+
+    /* Controls and containers added with the input layer. Each one exists
+     * because something needed it to be a real target rather than a custom
+     * element: a switch is a checkbox that looks like one, a stepper is a
+     * slider that snaps, and so on. */
+    BX_UI_KIND_SWITCH,
+    BX_UI_KIND_STEPPER,
+    BX_UI_KIND_COMBOBOX,
+    BX_UI_KIND_GROUPBOX,
+    BX_UI_KIND_FIELD,
+    BX_UI_KIND_DIVIDER,
+    BX_UI_KIND_BADGE,
+    BX_UI_KIND_CHIP,
+    BX_UI_KIND_ALERT,
+    BX_UI_KIND_CARD,
+    BX_UI_KIND_HEADER,
+    BX_UI_KIND_FOOTER,
+    BX_UI_KIND_BREADCRUMB,
+    BX_UI_KIND_PAGINATION,
+    BX_UI_KIND_DRAWER,
+
     BX_UI_KIND_CUSTOM = 1000
 } bx_ui_kind_t;
 
@@ -185,8 +209,15 @@ typedef struct {
     char     children[64][BX_UI_ID_MAX];
     int      child_count;
 
-    /* Input state, kept so a hit test and a redraw agree. */
+    /* Input state, kept so a hit test and a redraw agree. The three amounts
+     * are continuous 0..1 rather than flags: input moves them toward 1 or 0
+     * and the frame step eases them there, so a hover can fade and a press can
+     * sink. Because they are ordinary fields, ui drive and ui tween can take
+     * them over, which is how a scripted animation gets the same look as a
+     * real pointer without a pointer. */
     int      hovered, pressed, focused, disabled;
+    float    hover, press, focusv;
+    float    hover_target, press_target, focus_target;
     int      selected;         /* tabs, radio, checkbox: the "on" visual */
     float    scroll;           /* 0..1, for scroll, list, and text */
 } bx_ui_element_t;
@@ -354,6 +385,10 @@ typedef struct {
     bx_ui_mfn_t mathfns[BX_UI_MAX_FNS2];
     int         mathfn_count;
     char       focused[BX_UI_ID_MAX];
+    char       capture[BX_UI_ID_MAX];   /* holds the pointer while a drag is live */
+    char       hover_id[BX_UI_ID_MAX];
+    char       focused_id[BX_UI_ID_MAX];
+    float      pointer_x, pointer_y;
     char       active_frame[BX_UI_ID_MAX];
 } bx_ui_ctx_t;
 
@@ -424,6 +459,33 @@ int bx_ui_render(bx_gfx_fb_t *fb);
  * Children are searched before parents, and higher z wins, so the answer is
  * the thing the pointer is actually over. */
 bx_ui_element_t *bx_ui_hit(float x, float y);
+
+/* --------------------------------------------------------------- input */
+
+/* Backend-neutral input. Nothing here knows about a windowing library: a
+ * platform feeds it coordinates and key names, and the same calls work for a
+ * script, a test, or a real event loop. */
+typedef enum {
+    BX_UI_PTR_MOVE = 0,
+    BX_UI_PTR_DOWN,
+    BX_UI_PTR_UP,
+    BX_UI_PTR_WHEEL
+} bx_ui_ptr_action_t;
+
+/* Feed a pointer event. Returns the element it landed on, or NULL. */
+bx_ui_element_t *bx_ui_pointer(float x, float y, int button, bx_ui_ptr_action_t action);
+/* Feed a key. Returns 1 if something handled it. Printable keys are the
+ * character itself, so "a" types an a. */
+int bx_ui_key(int key, const char *action);
+/* The element that would take focus next, for Tab. */
+bx_ui_element_t *bx_ui_focus_next(const char *from, int back);
+/* Move focus. Returns the newly focused element, or NULL for none. */
+bx_ui_element_t *bx_ui_focus(const char *id);
+bx_ui_element_t *bx_ui_focused(void);
+/* Eased input state. Called from the frame step. */
+void bx_ui_input_tick(double dt);
+/* Nothing has the pointer any more, so drop hover and press. */
+void bx_ui_input_release(void);
 
 /* The site palette, as 0xRRGGBBAA: the framebuffer packs alpha last, so a
  * color parsed from "#rrggbb" can be written here directly. */
