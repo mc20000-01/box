@@ -1876,8 +1876,13 @@ static void umload_shell_sanitize(char *s) {
     size_t w = 0;
     for (size_t r = 0; s[r]; r++) {
         unsigned char c = (unsigned char)s[r];
+        /* Everything lands inside a single quoted shell word, so only quote
+         * and metacharacters need dropping. Colons, commas and slashes are
+         * common in descriptions and read fine once kept, but '|' has to go
+         * because registry.txt is pipe separated. */
         int safe = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                   (c >= '0' && c <= '9') || c == ' ' || c == '.' || c == '-' || c == '_';
+                   (c >= '0' && c <= '9') || c == ' ' || c == '.' || c == '-' ||
+                   c == '_' || c == ':' || c == ',' || c == '/' || c == '(' || c == ')';
         s[w++] = safe ? (char)c : ' ';
     }
     s[w] = 0;
