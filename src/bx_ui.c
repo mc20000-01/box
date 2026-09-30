@@ -564,12 +564,130 @@ int bx_ui_layout_apply(const char *frame_id) {
     return ui_layout_one(frame_id, 0);
 }
 
+/* Lay out a frame's docked children as one group.
+ *
+ * Docking a pane at a time gives every pane the whole edge, so two left-docked
+ * panes land on top of each other and a center pane has no region to be
+ * centered in. Working on the group instead is the only way an edge can be
+ * shared: each side is measured, its panes split it in order, and whatever is
+ * left over is the center. */
+static void ui_dock_children(bx_ui_element_t *f) {
+    if (!f || f->child_count == 0) return;
+
+    int nleft = 0, nright = 0, ntop = 0, nbottom = 0, nfill = 0, ncenter = 0;
+    float wl = 0, wr = 0, ht = 0, hb = 0;
+    for (int i = 0; i < f->child_count; i++) {
+        bx_ui_element_t *c = bx_ui_find(f->children[i]);
+        if (!c || !c->visible) continue;
+        switch (c->dock) {
+            case BX_UI_DOCK_LEFT:   nleft++;   wl += c->w > 0 ? c->w : 0; break;
+            case BX_UI_DOCK_RIGHT:  nright++;  wr += c->w > 0 ? c->w : 0; break;
+            case BX_UI_DOCK_TOP:    ntop++;    ht += c->h > 0 ? c->h : 0; break;
+            case BX_UI_DOCK_BOTTOM: nbottom++; hb += c->h > 0 ? c->h : 0; break;
+            case BX_UI_DOCK_FILL:   nfill++;   break;
+            case BX_UI_DOCK_CENTER: ncenter++; break;
+            default: break;                       /* NONE keeps its rect */
+        }
+    }
+    /* An edge with panes on it but no thickness yet takes a quarter of the
+     * frame, split between them. */
+    float aw = f->w - 2 * f->pad_x;
+    float ah = f->h - 2 * f->pad_y;
+    if (nleft && wl <= 0) wl = aw * 0.25f;
+    if (nright && wr <= 0) wr = aw * 0.25f;
+    if (ntop && ht <= 0) ht = ah * 0.25f;
+    if (nbottom && hb <= 0) hb = ah * 0.25f;
+
+    float x = f->pad_x;
+    float y = f->pad_y;
+    float cw = aw - wl - wr;
+    float ch = ah - ht - hb;
+    if (cw < 0) cw = 0;
+    if (ch < 0) ch = 0;
+
+    int il = 0, ir = 0, it = 0, ib = 0, ifill = 0, icenter = 0;
+    for (int i = 0; i < f->child_count; i++) {
+        bx_ui_element_t *c = bx_ui_find(f->children[i]);
+        if (!c || !c->visible) continue;
+        switch (c->dock) {
+            case BX_UI_DOCK_LEFT: {
+                /* The edge is shared, so a pane with no width takes an equal
+                 * share rather than the whole edge. */
+                float share = wl / (float)nleft;
+                c->w = c->w > 0 ? c->w : share;
+                c->x = x; c->y = y; c->h = ah;
+                x += c->w;
+                il++;
+                break;
+            }
+            case BX_UI_DOCK_RIGHT: {
+                float share = wr / (float)nright;
+                c->w = c->w > 0 ? c->w : share;
+                c->x = f->pad_x + aw - c->w; c->y = y; c->h = ah;
+                ir++;
+                break;
+            }
+            case BX_UI_DOCK_TOP: {
+                float share = ht / (float)ntop;
+                c->h = c->h > 0 ? c->h : share;
+                c->x = x; c->y = y; c->w = cw;
+                y += c->h;
+                it++;
+                break;
+            }
+            case BX_UI_DOCK_BOTTOM: {
+                float share = hb / (float)nbottom;
+                c->h = c->h > 0 ? c->h : share;
+                c->x = x; c->y = f->pad_y + ah - c->h; c->w = cw;
+                ib++;
+                break;
+            }
+            case BX_UI_DOCK_FILL: {
+                float share = cw / (float)(nfill > 0 ? nfill : 1);
+                if (nfill > 1 && share > 0) { c->x = x; c->w = share; x += share; }
+                else c->w = cw;
+                c->x = c->x > 0 ? c->x : x;
+                c->y = y; c->h = ch;
+                ifill++;
+                break;
+            }
+            case BX_UI_DOCK_CENTER: {
+                /* Centered in what is left, at the pane's own size when it
+                 * has one and filling the rest when it does not. */
+                float share = cw / (float)ncenter;
+                float bw = c->w > 0 ? c->w : share;
+                float bh = c->h > 0 ? c->h : ch;
+                c->w = bw; c->h = bh;
+                c->x = f->pad_x + (aw - bw) / 2.0f;
+                c->y = f->pad_y + (ah - bh) / 2.0f;
+                icenter++;
+                break;
+            }
+            default: break;
+        }
+    }
+    (void)il; (void)ir; (void)it; (void)ib; (void)ifill; (void)icenter;
+}
+
 static int ui_layout_here(bx_ui_element_t *f) {
     int n = f->child_count;
     if (n == 0) return 0;
 
     float inner_w = f->w - 2 * f->pad_x;
     float inner_h = f->h - 2 * f->pad_y;
+
+    /* Docking wins over a flow layout, and over absolute too. A pane that
+     * says dock left has asked for the left edge; the layout mode it was
+     * added under cannot take that away. */
+    int any_docked = 0;
+    for (int i = 0; i < n; i++) {
+        bx_ui_element_t *c = bx_ui_find(f->children[i]);
+        if (c && c->visible && c->dock != BX_UI_DOCK_NONE) { any_docked = 1; break; }
+    }
+    if (any_docked) {
+        ui_dock_children(f);
+        return 0;
+    }
 
     if (f->layout == BX_UI_LAYOUT_NONE) {
         /* Absolute: children keep the x/y they were given. */

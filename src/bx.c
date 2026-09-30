@@ -982,7 +982,20 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                     /* An unknown kind becomes a config object: a free-form
                      * container whose fields can be set and tuned later. */
                     if(kind>=BX_UI_KIND_CUSTOM){ e->layout=BX_UI_LAYOUT_COLUMN; e->pad_x=8; e->pad_y=8; e->gap=6; }
-                    if(kind==BX_UI_KIND_FRAME || kind==BX_UI_KIND_PANE){ e->w = n>=4?atoi(p[3]):320; e->h = n>=5?atoi(p[4]):240; }
+                    /* new|ID|KIND [parent] [W H] - a third argument that is a
+                     * number is a width, not a parent, because an id never
+                     * looks like a number and a width never looks like one
+                     * either. Without this the two forms are indistinguishable
+                     * and a sized frame silently loses its size. */
+                    int argi = 2;
+                    if (n > argi && !is_number(p[argi])) {
+                        snprintf(e->parent, sizeof e->parent, "%s", p[argi]);
+                        argi++;
+                    }
+                    if (kind==BX_UI_KIND_FRAME || kind==BX_UI_KIND_PANE){
+                        if (n > argi && is_number(p[argi])) e->w = (float)atof(p[argi]);
+                        if (n > argi+1 && is_number(p[argi+1])) e->h = (float)atof(p[argi+1]);
+                    }
                 }
             }
         }

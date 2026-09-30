@@ -465,6 +465,49 @@ jump $ui_after_tex|m
 
 premark ui_after_tex
 
+// --------------------------------------------- docking as a group
+// Docking a pane at a time gives each one the whole edge, so a second pane on
+// the same edge lands on top of the first. Docking the group is what makes an
+// edge shareable and gives a center pane something to be centered in.
+
+premark ui_group
+ui.init
+ui.new|dw|frame|200|120
+ui.new|dleft1|pane|dw
+ui.set|dleft1|dock|left
+ui.new|dleft2|pane|dw
+ui.set|dleft2|dock|left
+ui.new|dbot|pane|dw
+ui.set|dbot|dock|bottom
+ui.new|dmid|pane|dw
+ui.set|dmid|dock|center
+ui.layout|dw
+ui.get|dleft1|x|gl1x
+ui.get|dleft2|x|gl2x
+box ui_name|two left-docked panes split the left edge instead of overlapping
+box ui_got|$gl1x/$gl2x
+box ui_want|0/25
+box ui_next|ui_group_center
+jump uicheck|m
+
+premark ui_group_center
+ui.get|dmid|x|gmx
+ui.get|dmid|w|gmw
+box ui_name|a center-docked pane is centered in what the edges left
+box ui_got|$gmx/$gmw
+box ui_want|25/150
+box ui_next|ui_group_bottom
+jump uicheck|m
+
+premark ui_group_bottom
+ui.get|dbot|y|dby
+ui.get|dbot|h|dbh
+box ui_name|a bottom-docked pane sits at the far edge, below the top bar
+box ui_got|$dby/$dbh
+box ui_want|90/30
+box ui_next|ui_input
+jump uicheck|m
+
 // ------------------------------------------------------------- input
 // The input layer is fed coordinates and key names, never a device, so these
 // are the same calls a windowing backend would make.
