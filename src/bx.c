@@ -110,6 +110,8 @@ static int bx_snd_wav(const char *p){ (void)p; return -1; }
 #include "bx_wifi.h"
 #include "bx_gfx.h"
 #include "bx_ui.h"
+#include <stdarg.h>
+
 #include "bx_snd.h"
 #include "bx_math.h"
 #endif
@@ -984,6 +986,130 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                 }
             }
         }
+        /* Any property of any element can be a function of time. mathfn.set
+         * defines the function, drive attaches it to a property, and the
+         * frame step evaluates it before layout. Textures are the same idea
+         * per pixel. */
+        /* ui.mathfn.set joins to set|NAME|KIND|p0..p3, so p[0] is the action. */
+        else if(streqi(fam,"mathfn") && n>=2 && streqi(p[0],"set")){
+            char *name = resolve(&pr->boxes,p[1]);
+            if(n>=5 && streqi(p[2],"mxb")){
+                bx_ui_mathfn_define_mxb(name, atof(p[3]), atof(p[4]));
+            } else if(n>=3){
+                int kind = -1;
+                static const char *kn[]={"mxb","sin","tri","decay","step","noise","sqrt"};
+                for(unsigned k=0;k<sizeof kn/sizeof *kn;k++) if(streqi(p[2],kn[k])) { kind=(int)k; break; }
+                if(kind<0) fprintf(stderr,"ui mathfn set: unknown kind %s\n",p[2]);
+                else {
+                    double q[4]={0,0,0,0};
+                    for(unsigned k=0;k<4 && (int)(3+k)<n;k++) q[k]=atof(p[3+k]);
+                    bx_ui_mathfn_define(name,kind,q);
+                }
+            }
+            free(name);
+        }
+        else if(streqi(fam,"mathfn") && n>=2 && streqi(p[0],"list")){
+            char *name = resolve(&pr->boxes, n>=2?p[1]:p[0]);
+            int c = bx_ui_mathfn_count();
+            static char out[8192]; size_t ol=0;
+            for(int i=0;i<c && ol<sizeof out-128;i++){ const bx_ui_mfn_t*m=bx_ui_mathfn_at(i);
+                ol += (size_t)snprintf(out+ol,sizeof out-ol,"%s\t%s\t%d\t%g\t%g\t%g\t%g\n",
+                        i?"":"mathfn",m->name,m->kind,m->p[0],m->p[1],m->p[2],m->p[3]); }
+            box_set(&pr->boxes,name,out); free(name);
+        }
+        else if(streqi(fam,"math") && n>=3){
+            /* Sample a math function. This is what makes a value usable as
+             * math anywhere a number is accepted, including in ui set. */
+            char *name = resolve(&pr->boxes, n>=3?p[2]:p[0]);
+            double v = bx_ui_mathfn_eval(p[0], atof(p[1]));
+            char num[64]; snprintf(num,sizeof num,"%g",v);
+            box_set(&pr->boxes,name,num); free(name);
+        }
+        else if(streqi(fam,"drive") && n>=2 && streqi(p[1],"off")){
+            bx_ui_drive_remove(p[0], n>=3?p[2]:NULL);
+        }
+        else if(streqi(fam,"drive") && streqi(p[0],"list")){
+            /* Two spellings, same rejoin shape:
+             *   ui.drive.list|BOX        -> p[0]=list p[1]=BOX, every driver
+             *   ui.drive|ID|list|BOX     -> p[0]=ID  p[1]=list p[2]=BOX */
+            int all = streqi(p[0],"list");
+            const char *want = all ? NULL : p[0];
+            char *name = resolve(&pr->boxes, all ? (n>=2?p[1]:p[0]) : (n>=3?p[2]:p[0]));
+            int c = bx_ui_drive_count();
+            static char dout[8192]; size_t dl=0;
+            int first = 1;
+            for(int i=0;i<c && dl<sizeof dout-160;i++){ const bx_ui_driver_t*d=bx_ui_drive_at(i);
+                if(want && !streqi(d->id,want)) continue;
+                dl += (size_t)snprintf(dout+dl,sizeof dout-dl,"%s\t%s\t%s\t%d\t%g\t%s\t%g\t%g\t%g\t%g\n",
+                        first?"drive":"",d->id,d->prop,d->kind,d->v,d->fn,d->t0,d->t1,d->lo,d->hi);
+                first = 0; }
+            box_set(&pr->boxes,name,dout); free(name);
+        }
+        else if(streqi(fam,"drive") && n>=4){
+            /* drive|ID|PROP|const|V
+             * drive|ID|PROP|fn|NAME|LO|T0|T1|HI   sample a function over a time
+             *                                         window into a value range
+             * drive|ID|PROP|wave|NAME|LO|HI       oscillate, folded to range
+             * drive|ID|PROP|mirror|ID2|PROP      follow another element
+             * The parameter order is lo,t0,t1,hi in both fn and wave: the
+             * range is what the property becomes, the window is when. */
+            const char *src = p[2];
+            int kind; double q[4]={0,0,0,0}; char *fn=NULL,*sid=NULL,*sprop=NULL;
+            if(streqi(src,"const")){ kind=BX_UI_DRIVE_CONST; q[0]=atof(p[3]); }
+            else if(streqi(src,"fn")){ kind=BX_UI_DRIVE_MFN; fn=resolve(&pr->boxes,p[3]);
+                for(unsigned k=0;k<4 && (int)(4+k)<n;k++) q[k]=atof(p[4+k]); }
+            else if(streqi(src,"wave")){ kind=BX_UI_DRIVE_WAVE; fn=resolve(&pr->boxes,p[3]);
+                q[0]=n>=5?atof(p[4]):0; q[3]=n>=6?atof(p[5]):1; }
+            else if(streqi(src,"mirror")){ kind=BX_UI_DRIVE_MIRROR; sid=resolve(&pr->boxes,p[3]); sprop=resolve(&pr->boxes,p[4]); }
+            else { fprintf(stderr,"ui drive: expected const, fn, wave or mirror\n"); goto drive_done; }
+            if(bx_ui_drive(p[0],p[1],kind,q,fn,sid,sprop)!=0)
+                fprintf(stderr,"ui drive: no room (max %d drivers)\n",BX_UI_MAX_DRIVERS);
+        drive_done: ;
+            free(fn); free(sid); free(sprop);
+        }
+        else if(streqi(fam,"texture") && n>=2){
+            /* texture|ID|PATTERN|p0 p1 p2 p3 [C1] [C2] [fn]
+             * after normalisation p[0]=ID p[1]=PATTERN p[2..5]=params and the
+             * optional trailing args follow. The four parameters are always
+             * present in the syntax even when a pattern ignores them, so that
+             * fn and the colours never shift position. */
+            static const char *tn[]={"solid","gradv","gradh","checker","stripes","dots","grid","noise","ring","wave","mfn"};
+            int kind=-1;
+            for(unsigned k=0;k<sizeof tn/sizeof *tn;k++) if(streqi(p[1],tn[k])) { kind=(int)k; break; }
+            if(kind<0) fprintf(stderr,"ui texture: unknown pattern %s\n",p[1]);
+            else {
+                /* The parameters are positional but trailing, and a blank
+                 * field for "no function" is dropped before it gets here, so
+                 * counting by position alone would put the colours in the
+                 * wrong slots. Take up to four leading numbers as parameters
+                 * and treat whatever non-empty fields follow as fn, C1, C2. */
+                /* Parameters are the leading numbers and are read by type;
+                 * the rest are C1, C2 and then the function. Colours come
+                 * before the function because a pattern needs a colour far
+                 * more often than it needs a curve, and pass - to skip one. */
+                double q[4]={0,0,0,0}; int qn=0;
+                const char *tail[3] = {NULL,NULL,NULL}; int tn2=0;
+                for(int i=2;i<n;i++){
+                    if(qn<4 && is_number(p[i])){ q[qn++]=atof(p[i]); continue; }
+                    if(tn2<3 && p[i] && *p[i]) tail[tn2++]=p[i];
+                }
+                /* Colours are identifiable by their leading #, so the slots
+                 * are filled by type: parameters first, then the colours,
+                 * then the function. No placeholder is ever needed. */
+                char *c1=NULL,*c2=NULL,*fn=NULL;
+                const char *rest[2]; int rn=0;
+                for(int k=0;k<tn2;k++) if(tail[k][0]=='#'){ if(!c1) c1=tail[k]; else if(!c2) c2=tail[k]; }
+                for(int k=0;k<tn2 && rn<2;k++) if(tail[k][0]!='#') rest[rn++]=tail[k];
+                fn = rn>0 ? rest[0] : NULL;
+                char *rfn = fn ? resolve(&pr->boxes,fn) : NULL;
+                char *rc1 = c1 ? resolve(&pr->boxes,c1) : NULL;
+                char *rc2 = c2 ? resolve(&pr->boxes,c2) : NULL;
+                fn = rfn; c1 = rc1; c2 = rc2;
+                if(bx_ui_texture_set(p[0],kind,q,fn,c1,c2)!=0)
+                    fprintf(stderr,"ui texture: no room (max %d textures)\n",BX_UI_MAX_TEXTURES);
+                free(fn); free(c1); free(c2);
+            }
+        }
         else if(streqi(fam,"set") && n>=3){
             bx_ui_element_t *e = bx_ui_find(p[0]);
             if(!e) fprintf(stderr,"ui set: no element %s\n",p[0]);
@@ -991,63 +1117,12 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                 char *f = resolve(&pr->boxes,p[1]);
                 char *v = resolve(&pr->boxes,p[2]);
                 const char *field = p[1];
-                if(!strcmp(field,"x")) e->x=atof(v);
-                else if(!strcmp(field,"y")) e->y=atof(v);
-                else if(!strcmp(field,"w")) e->w=atof(v);
-                else if(!strcmp(field,"h")) e->h=atof(v);
-                else if(!strcmp(field,"dock")){
-                    if(streqi(v,"left")) e->dock=BX_UI_DOCK_LEFT;
-                    else if(streqi(v,"right")) e->dock=BX_UI_DOCK_RIGHT;
-                    else if(streqi(v,"top")) e->dock=BX_UI_DOCK_TOP;
-                    else if(streqi(v,"bottom")) e->dock=BX_UI_DOCK_BOTTOM;
-                    else if(streqi(v,"center")) e->dock=BX_UI_DOCK_CENTER;
-                    else if(streqi(v,"fill")) e->dock=BX_UI_DOCK_FILL;
-                    else e->dock=BX_UI_DOCK_NONE;
-                }
-                else if(!strcmp(field,"visible")) e->visible=atoi(v)?1:0;
-                else if(!strcmp(field,"text")) snprintf(e->text,sizeof e->text,"%s",v);
-                else if(!strcmp(field,"value")) snprintf(e->value,sizeof e->value,"%s",v);
-                else if(!strcmp(field,"style")) snprintf(e->style,sizeof e->style,"%s",v);
-                else if(!strcmp(field,"theme")){ if(bx_gfx_parse_theme(v,&e->theme)!=0) fprintf(stderr,"ui set: bad theme\n"); }
-                else if(!strcmp(field,"color")){ int ok=0; uint32_t c=bx_gfx_parse_color(v); ok=c!=0||streqi(v,"0"); e->color=c; (void)ok; }
-                else if(!strcmp(field,"alpha")) e->theme.alpha=(uint8_t)atoi(v);
-                else if(!strcmp(field,"gap")) e->gap=atof(v);
-                else if(!strcmp(field,"padx")) e->pad_x=atof(v);
-                else if(!strcmp(field,"pady")) e->pad_y=atof(v);
-                else if(!strcmp(field,"columns")) e->columns=atoi(v);
-                else if(!strcmp(field,"z")) e->z=atoi(v);
-                else if(!strcmp(field,"minw")) e->min_w=atof(v);
-                else if(!strcmp(field,"minh")) e->min_h=atof(v);
-                else if(!strcmp(field,"align")){
-                    if(streqi(v,"start")){ e->align_h=e->align_v=BX_UI_ALIGN_START; }
-                    else if(streqi(v,"center")){ e->align_h=e->align_v=BX_UI_ALIGN_CENTER; }
-                    else if(streqi(v,"end")){ e->align_h=e->align_v=BX_UI_ALIGN_END; }
-                    else if(streqi(v,"stretch")){ e->align_h=e->align_v=BX_UI_ALIGN_STRETCH; }
-                }
-                else if(!strcmp(field,"layout")){
-                    if(streqi(v,"none")) e->layout=BX_UI_LAYOUT_NONE;
-                    else if(streqi(v,"row")) e->layout=BX_UI_LAYOUT_ROW;
-                    else if(streqi(v,"column")||streqi(v,"col")) e->layout=BX_UI_LAYOUT_COLUMN;
-                    else if(streqi(v,"grid")) e->layout=BX_UI_LAYOUT_GRID;
-                    else if(streqi(v,"stack")) e->layout=BX_UI_LAYOUT_STACK;
-                    else if(streqi(v,"wrap")) e->layout=BX_UI_LAYOUT_WRAP;
-                    else fprintf(stderr,"ui set: unknown layout %s\n",v);
-                }
-                else if(!strcmp(field,"justify")){
-                    if(streqi(v,"start")) e->justify=BX_UI_JUSTIFY_START;
-                    else if(streqi(v,"center")) e->justify=BX_UI_JUSTIFY_CENTER;
-                    else if(streqi(v,"end")) e->justify=BX_UI_JUSTIFY_END;
-                    else if(streqi(v,"between")||streqi(v,"space-between")) e->justify=BX_UI_JUSTIFY_SPACE_BETWEEN;
-                }
-                else {
-                    /* Unknown field on a config object: keep it. A custom
-                     * element is a bag of tweakable values by design. */
-                    char tmp[128];
-                    snprintf(tmp,sizeof tmp,"%s=%s",field,v);
-                    /* stored in style slot when it fits, else ignored loudly */
-                    if(strlen(tmp)<sizeof e->style) snprintf(e->style,sizeof e->style,"%s",tmp);
-                    else fprintf(stderr,"ui set: value too long for %s\n",field);
-                }
+                /* One setter. ui.set, a driver and a tween all write properties
+                 * through here, so a driven property and a set property cannot
+                 * drift apart. -1 means the field was kept as a config value,
+                 * which is expected for a custom element. */
+                if (bx_ui_set_field(e, field, v) == -2)
+                    fprintf(stderr, "ui set: bad value for %s='%s'\n", field, v);
                 free(f); free(v);
             }
         }
@@ -1061,23 +1136,14 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                 /* ID|FIELD[|BOX] - after normalisation both spellings have
                  * the same shape, so the box is the third field when given. */
                 char *name = n>=3 ? resolve(&pr->boxes,p[2]) : resolve(&pr->boxes,p[0]);
-                char b[160];
-                if(!strcmp(field,"kind")||!strcmp(field,"kindname")) snprintf(b,sizeof b,"%s",bx_ui_kind_name(e->kind));
-                else if(!strcmp(field,"x")) snprintf(b,sizeof b,"%g",e->x);
-                else if(!strcmp(field,"y")) snprintf(b,sizeof b,"%g",e->y);
-                else if(!strcmp(field,"w")) snprintf(b,sizeof b,"%g",e->w);
-                else if(!strcmp(field,"h")) snprintf(b,sizeof b,"%g",e->h);
-                else if(!strcmp(field,"text")) snprintf(b,sizeof b,"%s",e->text);
-                else if(!strcmp(field,"value")) snprintf(b,sizeof b,"%s",e->value);
-                else if(!strcmp(field,"visible")) snprintf(b,sizeof b,"%d",e->visible?1:0);
-                else if(!strcmp(field,"dock")){
-                    static const char *dn[]={"none","left","right","top","bottom","center","fill"};
-                    snprintf(b,sizeof b,"%s",(e->dock>=0&&e->dock<=6)?dn[e->dock]:"none");
+                char b[192];
+                /* bx_ui_get_field is the same reader the mirror driver uses,
+                 * so "what does drive read" and "what does ui get print" are
+                 * one question with one answer. */
+                if(bx_ui_get_field(e,field,b,sizeof b)!=0){
+                    fprintf(stderr,"ui get: unknown field %s\n",field);
+                    free(name); goto ui_done;
                 }
-                else if(!strcmp(field,"z")) snprintf(b,sizeof b,"%d",e->z);
-                else if(!strcmp(field,"children")) snprintf(b,sizeof b,"%d",e->child_count);
-                else if(!strcmp(field,"layout")) snprintf(b,sizeof b,"%d",(int)e->layout);
-                else { fprintf(stderr,"ui get: unknown field %s\n",field); free(name); goto ui_done; }
                 box_set(&pr->boxes,name,b);
                 free(name);
             }
@@ -1305,11 +1371,8 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                 /* Advance by a fixed delta. Real pacing comes from ui frame
                  * once, but a fixed step makes an animation reproducible in a
                  * test, which the wall clock cannot be. */
-                float dt=(float)atof(p[1]);
-                g_bx_ui.clock.frame++;
-                g_bx_ui.clock.dt=dt;
-                bx_ui_tween_tick(dt);
-                printf("frame %llu dt=%.4f tweens=%d\n",(unsigned long long)g_bx_ui.clock.frame,dt,bx_ui_tween_running()); fflush(stdout);
+                bx_ui_frame_step_dt(atof(p[1]));
+                printf("frame %llu dt=%.4f tweens=%d\n",(unsigned long long)g_bx_ui.clock.frame,g_bx_ui.clock.dt,bx_ui_tween_running()); fflush(stdout);
             }
             else if(streqi(p[0],"fps")&&n>=2){ bx_ui_clock_reset(atoi(p[1])); printf("frame: %d fps\n",g_bx_ui.clock.fps); fflush(stdout); }
             else if(streqi(p[0],"now")){ printf("frame %llu dt=%.4f\n",(unsigned long long)g_bx_ui.clock.frame,g_bx_ui.clock.dt); fflush(stdout); }

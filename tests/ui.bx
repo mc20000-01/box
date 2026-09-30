@@ -10,6 +10,9 @@ lib load|gfx
 high.gfx.fbsize|200|120
 
 box ui_fail|0
+// bounds used by the wave-driver range check
+box ui_lo10|10
+box ui_hi30|30
 jump ui_first|m
 
 premark uicheck
@@ -297,8 +300,170 @@ ui.render|ppm|.build/ui-render.ppm|ui_ppm_ok
 box ui_name|ui render writes a PPM
 box ui_got|$ui_ppm_ok
 box ui_want|1
-box ui_next|ui_last
+box ui_next|ui_render_ppm_done
 jump uicheck|m
+
+// ------------------------------------------------- math-driven properties
+// The point of this section: a property is a number that something else is
+// allowed to compute. ui frame step evaluates the drivers before layout, so
+// the value read back below is the value the renderer used.
+
+premark ui_render_ppm_done
+ui.new|glow|pane|win
+ui.set|glow|w|60
+ui.set|glow|h|40
+
+// A linear function of the clock drives y from 0 to 40 over one second.
+ui.mathfn.set|slide|mxb|40|0
+ui.drive|glow|y|fn|slide|0|0|1|40
+ui.frame|step|1.0|ui_ppm_ok2
+ui.get|glow|y|gy
+box ui_name|a mathfn driver moved y over the frame window
+box ui_got|$gy
+box ui_want|40
+box ui_next|ui_wave
+jump uicheck|m
+
+premark ui_wave
+// A wave driver oscillates; lo and hi bound it. Sampling at t=0 of a sin
+// defined with zero phase starts at its offset, which for sin amp=1 is 0.
+ui.new|pulse|pane|win
+ui.set|pulse|w|20
+ui.set|pulse|h|20
+ui.mathfn.set|breathe|sin|1|1|0|0
+ui.drive|pulse|h|wave|breathe|10|30
+ui.frame|step|1.0|ui_wave_ok
+ui.get|pulse|h|ph
+box ui_name|a wave driver keeps h inside its lo..hi range
+jumpif $ph|<|$ui_lo10|ui_wave_bad|m
+jumpif $ph|>|$ui_hi30|ui_wave_bad|m
+box ui_got|1
+box ui_want|1
+box ui_next|ui_mirror
+jump uicheck|m
+
+premark ui_wave_bad
+box ui_name|a wave driver keeps h inside its lo..hi range
+box ui_got|$ph
+box ui_want|10 to 30
+box ui_next|ui_wave_bad2
+jump uicheck|m
+
+premark ui_wave_bad2
+// fold back into range so the harness moves on
+box ui_next|ui_mirror
+jump uicheck|m
+
+premark ui_mirror
+// A mirror driver reads one element's property and writes it to another,
+// through the same field reader that ui get uses.
+ui.new|src|pane|win
+ui.set|src|w|33
+ui.new|echo|custom
+ui.drive|echo|w|mirror|src|w
+ui.frame|step|1.0|ui_mirror_ok
+ui.get|echo|w|ew
+box ui_name|a mirror driver copies w through the shared field reader
+box ui_got|$ew
+box ui_want|33
+box ui_next|ui_tex
+jump uicheck|m
+
+premark ui_tex
+// A texture replaces the material fill. This gets a frame of its own at the
+// top of the z order, because everything else in the window is still drawn
+// and would otherwise cover the corner being sampled.
+ui.new|texwin|frame
+ui.set|texwin|z|200
+ui.set|texwin|x|0
+ui.set|texwin|y|0
+ui.set|texwin|w|200
+ui.set|texwin|h|120
+ui.new|texel|pane|texwin
+ui.set|texel|dock|none
+ui.set|texel|x|0
+ui.set|texel|y|0
+ui.set|texel|w|32
+ui.set|texel|h|32
+ui.texture|texel|checker|8|#ff0000ff|#00ff00ff
+ui.render|ui_tex_ok
+// One pixel in each half of the first row of cells: cell (0,0) is the first
+// colour and cell (1,0) the second, so a pattern that did not run per pixel
+// cannot produce this.
+high.gfx.pixel|px_a|1|1
+high.gfx.pixel|px_b|9|1
+box ui_name|a checker texture puts both pattern colours in the tile
+jumpif $px_a|!==|0xff0000ff|ui_tex_bad|m
+jumpif $px_b|!==|0x00ff00ff|ui_tex_bad|m
+box ui_got|1
+box ui_want|1
+box ui_next|ui_tex_grad
+jump uicheck|m
+
+premark ui_tex_bad
+box ui_name|a checker texture puts both pattern colours in the tile
+box ui_got|$px_a/$px_b
+box ui_want|0xff0000ff/0x00ff00ff
+box ui_next|ui_tex_grad
+jump uicheck|m
+
+premark ui_tex_grad
+// A vertical gradient runs from the first colour to the second down the
+// element, which is the same function the drivers use, sampled per pixel.
+ui.set|texel|w|32
+ui.set|texel|h|32
+ui.texture|texel|gradv|#000000ff|#ffffffff
+ui.render|ui_tex_ok2
+high.gfx.pixel|px_top|0|0
+high.gfx.pixel|px_bot|0|31
+box ui_name|a gradient runs first colour at the top to second at the bottom
+jumpif $px_top|!==|0x000000ff|ui_tex_grad_bad|m
+jumpif $px_bot|!==|0xffffffff|ui_tex_grad_bad|m
+box ui_got|1
+box ui_want|1
+box ui_next|ui_tex_anim
+jump uicheck|m
+
+premark ui_tex_grad_bad
+box ui_name|a gradient runs first colour at the top to second at the bottom
+box ui_got|$px_top/$px_bot
+box ui_want|0x000000ff/0xffffffff
+box ui_next|ui_tex_anim
+jump uicheck|m
+
+premark ui_tex_anim
+// A pattern animated by the clock: stripes have a speed parameter, so two
+// frames a quarter period apart must differ at the same pixel. Nothing about
+// the geometry changed between them, which is the whole claim.
+// amp|freq|speed: a sine across x, drifting with the clock. Unlike stripes
+// this is continuous in time, so any two frames at different times differ
+// somewhere, which is what makes it a good check that time reaches the
+// per-pixel function at all.
+ui.texture|texel|wave|1|20|2|#204060ff|#e0e0e0ff
+ui.frame|step|0.25
+ui.render|ui_tex_ok3
+high.gfx.pixel|px_t0|2|6
+ui.frame|step|0.25
+ui.render|ui_tex_ok4
+high.gfx.pixel|px_t1|2|6
+box ui_name|a time-parameterised texture changes between frames
+jumpif $px_t0|===|$px_t1|ui_tex_anim_bad|m
+box ui_got|1
+box ui_want|1
+box ui_next|ui_tex_end
+jump uicheck|m
+
+premark ui_tex_anim_bad
+box ui_name|a time-parameterised texture changes between frames
+box ui_got|$px_t0/$px_t1
+box ui_want|different
+box ui_next|ui_tex_end
+jump uicheck|m
+
+premark ui_tex_end
+jump $ui_after_tex|m
+
+premark ui_after_tex
 
 premark ui_last
 say ---

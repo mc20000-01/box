@@ -324,6 +324,59 @@ void bx_gfx_rect_outline(bx_gfx_fb_t *fb, int32_t x, int32_t y, int32_t w, int32
 /* Filled disk. Each scanline is one horizontal span whose half-width is
  * floor(sqrt(r^2 - dy^2)), so the interior is genuinely covered rather than
  * just the perimeter. */
+/* Is (px,py) inside the rounded rect? Every corner is a circle of radius r
+ * and the straight edges are handled by clamping to the corner centres, so
+ * one test covers every case including r = 0. */
+int bx_gfx_round_inside(int32_t px, int32_t py, int32_t x, int32_t y,
+                        int32_t w, int32_t h, int32_t r) {
+    if (w <= 0 || h <= 0) return 0;
+    if (r < 0) r = 0;
+    if (r > w / 2) r = w / 2;
+    if (r > h / 2) r = h / 2;
+    if (px < x || py < y || px >= x + w || py >= y + h) return 0;
+    if (r == 0) return 1;
+    int32_t x1 = x + r, x2 = x + w - 1 - r;
+    int32_t y1 = y + r, y2 = y + h - 1 - r;
+    int32_t cx = px < x1 ? x1 : (px > x2 ? x2 : px);
+    int32_t cy = py < y1 ? y1 : (py > y2 ? y2 : py);
+    int32_t dx = px - cx, dy = py - cy;
+    return dx * dx + dy * dy <= r * r;
+}
+
+void bx_gfx_rect_round(bx_gfx_fb_t *fb, int32_t x, int32_t y, int32_t w, int32_t h,
+                       int32_t r, uint32_t c) {
+    for (int32_t yy = 0; yy < h; yy++)
+        for (int32_t xx = 0; xx < w; xx++)
+            if (bx_gfx_round_inside(x + xx, y + yy, x, y, w, h, r))
+                bx_gfx_plot(fb, x + xx, y + yy, c);
+}
+
+void bx_gfx_rect_round_gradient_v(bx_gfx_fb_t *fb, int32_t x, int32_t y, int32_t w, int32_t h,
+                                  int32_t r, uint32_t top, uint32_t bottom) {
+    if (h <= 0) return;
+    for (int32_t yy = 0; yy < h; yy++) {
+        /* t is 0..256 across the height, matching bx_gfx_color_lerp. */
+        int32_t t = h > 1 ? (yy * 256) / (h - 1) : 0;
+        uint32_t c = bx_gfx_color_lerp(top, bottom, t);
+        for (int32_t xx = 0; xx < w; xx++)
+            if (bx_gfx_round_inside(x + xx, y + yy, x, y, w, h, r))
+                bx_gfx_plot(fb, x + xx, y + yy, c);
+    }
+}
+
+void bx_gfx_rect_round_outline(bx_gfx_fb_t *fb, int32_t x, int32_t y, int32_t w, int32_t h,
+                               int32_t r, uint32_t c) {
+    if (w <= 0 || h <= 0) return;
+    for (int32_t xx = 0; xx < w; xx++) {
+        if (bx_gfx_round_inside(x + xx, y, x, y, w, h, r)) bx_gfx_plot(fb, x + xx, y, c);
+        if (bx_gfx_round_inside(x + xx, y + h - 1, x, y, w, h, r)) bx_gfx_plot(fb, x + xx, y + h - 1, c);
+    }
+    for (int32_t yy = 0; yy < h; yy++) {
+        if (bx_gfx_round_inside(x, y + yy, x, y, w, h, r)) bx_gfx_plot(fb, x, y + yy, c);
+        if (bx_gfx_round_inside(x + w - 1, y + yy, x, y, w, h, r)) bx_gfx_plot(fb, x + w - 1, y + yy, c);
+    }
+}
+
 void bx_gfx_circle(bx_gfx_fb_t *fb, int32_t cx, int32_t cy, int32_t r, uint32_t c) {
     if (!fb || !fb->pixels || r < 0) return;
     float tcx, tcy;

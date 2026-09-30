@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
+#include <ctype.h>
 
 bx_ui_ctx_t g_bx_ui;
 
@@ -345,10 +346,30 @@ void bx_ui_clock_reset(int fps) {
     c->frame = 0;
     c->running = 0;
     c->single_shot = 0;
+    c->pending = 0;
+    c->elapsed = 0;
 }
 
 /* One paced step. Returns 1 when a frame was actually stepped, so a caller
  * can loop until it returns 0 and never render a duplicate frame. */
+/* The fixed step `ui frame|DT` runs. Both frame modes end here, so a driver
+ * sees simulated time advancing the same amount whichever mode asked for it:
+ * the difference between a looping animation and a test that means something
+ * should not be a difference in what "now" is. */
+static void ui_frame_commit(double dt) {
+    bx_ui_clock_t *c = &g_bx_ui.clock;
+    c->dt = dt;
+    c->elapsed += dt;
+    c->last = c->now;
+    c->frame++;
+    bx_ui_tween_tick((float)dt);
+    bx_ui_apply_drivers(c->elapsed);
+}
+
+void bx_ui_frame_step_dt(double dt) {
+    ui_frame_commit(dt);
+}
+
 int bx_ui_frame_step(void) {
     bx_ui_clock_t *c = &g_bx_ui.clock;
     double now = bx_ui_now();
@@ -356,12 +377,11 @@ int bx_ui_frame_step(void) {
     if (c->last == 0) c->last = now;
 
     if (c->single_shot) {
-        c->dt = now - c->last;
-        c->last = now;
-        c->frame++;
+        double dt = c->pending > 0 ? c->pending : (now - c->last);
+        c->pending = 0;
         c->single_shot = 0;
         c->running = 0;
-        bx_ui_tween_tick((float)c->dt);
+        ui_frame_commit(dt);
         return 1;
     }
 
@@ -376,11 +396,8 @@ int bx_ui_frame_step(void) {
     double step = 1.0 / (double)c->fps;
     if (c->acc < step) { c->dt = 0; return 0; }
 
-    c->dt = c->acc;
     c->acc = 0;
-    c->last = now;
-    c->frame++;
-    bx_ui_tween_tick((float)c->dt);
+    ui_frame_commit(elapsed);
     return 1;
 }
 
@@ -693,6 +710,62 @@ static uint32_t ui_text_for(const bx_ui_element_t *e) {
     return BX_UI_C_TEXT;
 }
 
+/* Draw a surface according to its material. Everything that looks like a
+ * container goes through here, which is what makes glass and matte agree
+ * with each other instead of drifting apart per widget. */
+static void ui_surface(bx_gfx_fb_t *fb, const bx_ui_element_t *e, uint32_t base) {
+    int32_t x = (int32_t)e->x, y = (int32_t)e->y, w = (int32_t)e->w, h = (int32_t)e->h;
+    int32_t r = e->radius > 0 ? e->radius : 6;
+    if (e->kind == BX_UI_KIND_FRAME || e->kind == BX_UI_KIND_PANE) r = e->radius;
+
+    switch (e->material) {
+        case BX_UI_MAT_GLASS: {
+            /* A translucent body, a brighter top edge, and a sheen across the
+             * top third. The sheen is the part that sells it: without a
+             * highlight a transparent rectangle reads as a hole. */
+            uint32_t body = bx_gfx_color_scale_alpha(base, 150);
+            uint32_t top  = bx_gfx_color_scale_alpha(base, 190);
+            uint32_t edge = bx_gfx_color_lerp(base, BX_UI_C_TEXT, 70);
+            if (r > 0) bx_gfx_rect_round(fb, x, y, w, h, r, body);
+            else bx_gfx_rect(fb, x, y, w, h, body);
+            int32_t sheen = h / 3;
+            if (sheen > 2) {
+                uint32_t hi = bx_gfx_color_scale_alpha(top, 120);
+                if (r > 0) {
+                    for (int32_t yy = 0; yy < sheen; yy++) {
+                        /* Fade the sheen out with height so there is no hard
+                         * edge where the highlight stops. */
+                        int32_t t = (yy * 256) / sheen;
+                        uint32_t c = bx_gfx_color_scale_alpha(hi, 255 - t);
+                        for (int32_t xx = 0; xx < w; xx++)
+                            if (bx_gfx_round_inside(x + xx, y + yy, x, y, w, h, r))
+                                bx_gfx_plot(fb, x + xx, y + yy, c);
+                    }
+                }
+            }
+            if (r > 0) bx_gfx_rect_round_outline(fb, x, y, w, h, r, edge);
+            else bx_gfx_rect_outline(fb, x, y, w, h, edge);
+            /* A brighter line along the very top, where light lands. */
+            for (int32_t xx = r; xx < w - r; xx++) bx_gfx_plot(fb, x + xx, y, edge);
+            break;
+        }
+        case BX_UI_MAT_FLAT:
+            if (r > 0) bx_gfx_rect_round_outline(fb, x, y, w, h, r, bx_gfx_color_lerp(base, BX_UI_C_TEXT, 40));
+            else bx_gfx_rect_outline(fb, x, y, w, h, bx_gfx_color_lerp(base, BX_UI_C_TEXT, 40));
+            break;
+        case BX_UI_MAT_MATTE:
+        default:
+            if (r > 0) {
+                bx_gfx_rect_round(fb, x, y, w, h, r, base);
+                bx_gfx_rect_round_outline(fb, x, y, w, h, r, BX_UI_C_BORDER);
+            } else {
+                bx_gfx_rect(fb, x, y, w, h, base);
+                bx_gfx_rect_outline(fb, x, y, w, h, BX_UI_C_BORDER);
+            }
+            break;
+    }
+}
+
 static void ui_text_center(bx_gfx_fb_t *fb, const bx_ui_element_t *e, uint32_t c) {
     if (!e->text[0]) return;
     int32_t tw = bx_gfx_text_w(e->text), th = bx_gfx_text_h();
@@ -721,8 +794,10 @@ static int ui_draw_one(bx_gfx_fb_t *fb, bx_ui_element_t *e) {
         case BX_UI_KIND_SIDEBAR:
         case BX_UI_KIND_TOOLBAR:
         case BX_UI_KIND_STATUSBAR:
-            bx_gfx_rect(fb, x, y, w, h, ui_fill_for(e));
-            bx_gfx_rect_outline(fb, x, y, w, h, BX_UI_C_BORDER);
+            /* A texture, if one is attached, replaces the material fill: the
+             * pattern is the surface, so drawing the material first would only
+             * show through the gaps. */
+            if (!bx_ui_texture_draw(fb, e)) ui_surface(fb, e, ui_fill_for(e));
             break;
         case BX_UI_KIND_BUTTON: {
             uint32_t c = ui_fill_for(e);
@@ -733,8 +808,12 @@ static int ui_draw_one(bx_gfx_fb_t *fb, bx_ui_element_t *e) {
              * pressed. */
             if (e->pressed) c = bx_gfx_color_lerp(c, BX_UI_C_BG, 96);
             else if (e->hovered) c = bx_gfx_color_lerp(c, BX_UI_C_ACCENT, 60);
-            bx_gfx_rect(fb, x, y, w, h, c);
-            bx_gfx_rect_outline(fb, x, y, w, h, BX_UI_C_ACCENT_DK);
+            bx_ui_element_t tmp = *e;
+            tmp.material = BX_UI_MAT_MATTE;
+            tmp.color = c;
+            ui_surface(fb, &tmp, c);
+            if (e->radius > 0) bx_gfx_rect_round_outline(fb, x, y, w, h, e->radius, BX_UI_C_ACCENT_DK);
+            else bx_gfx_rect_outline(fb, x, y, w, h, BX_UI_C_ACCENT_DK);
             ui_text_center(fb, e, ui_text_for(e));
             break;
         }
@@ -752,22 +831,32 @@ static int ui_draw_one(bx_gfx_fb_t *fb, bx_ui_element_t *e) {
         case BX_UI_KIND_LIST:
         case BX_UI_KIND_TREE:
         case BX_UI_KIND_MENU:
-            bx_gfx_rect(fb, x, y, w, h, BX_UI_C_INSET);
-            bx_gfx_rect_outline(fb, x, y, w, h, e->focused ? BX_UI_C_ACCENT : BX_UI_C_BORDER);
-            bx_gfx_text(fb, x + 4, y + (h - bx_gfx_text_h()) / 2, e->text, BX_UI_C_TEXT);
+            {
+                int32_t r = e->radius > 0 ? e->radius : 4;
+                bx_gfx_rect_round(fb, x, y, w, h, r, BX_UI_C_INSET);
+                bx_gfx_rect_round_outline(fb, x, y, w, h, r,
+                                          e->focused ? BX_UI_C_ACCENT : BX_UI_C_BORDER);
+            }
+            bx_gfx_text(fb, x + 5, y + (h - bx_gfx_text_h()) / 2, e->text, BX_UI_C_TEXT);
             break;
         case BX_UI_KIND_SLIDER:
         case BX_UI_KIND_SCROLL: {
-            bx_gfx_rect(fb, x, y + h / 3, w, h / 3, BX_UI_C_INSET);
-            int32_t knob = w / 8;
+            int32_t r = e->radius > 0 ? e->radius : 4;
+            int32_t ty = y + h / 3;
+            bx_gfx_rect_round(fb, x, ty, w, h / 3, r, BX_UI_C_INSET);
+            int32_t knob = h - 6;
             if (knob < 4) knob = 4;
             int32_t kx = x + (int32_t)(ui_fraction(e) * (w - knob));
-            bx_gfx_rect(fb, kx, y + h / 3 - 2, knob, h / 3 + 4, BX_UI_C_ACCENT);
+            bx_gfx_rect_round(fb, kx, ty - 2, knob, h / 3 + 4, r, BX_UI_C_ACCENT);
             break;
         }
         case BX_UI_KIND_PROGRESS:
-            bx_gfx_rect(fb, x, y + h / 3, w, h / 3, BX_UI_C_INSET);
-            bx_gfx_rect(fb, x, y + h / 3, (int32_t)(w * ui_fraction(e)), h / 3, BX_UI_C_ACCENT);
+            {
+                int32_t r = e->radius > 0 ? e->radius : 4;
+                int32_t ty = y + h / 3;
+                bx_gfx_rect_round(fb, x, ty, w, h / 3, r, BX_UI_C_INSET);
+                bx_gfx_rect_round(fb, x, ty, (int32_t)(w * ui_fraction(e)), h / 3, r, BX_UI_C_ACCENT);
+            }
             break;
         case BX_UI_KIND_CHECKBOX: {
             int32_t bs = h - 4; if (bs < 6) bs = 6;
@@ -897,4 +986,523 @@ bx_ui_element_t *bx_ui_hit(float x, float y) {
         if (db >= dw || (db == dw && e->z >= best->z)) best = e;
     }
     return best;
+}
+
+/* ---------------------------------------------------------------- fields */
+
+/* Field names are matched case-insensitively, like every other command word in
+ * the language, so ui set|win|Color and ui set|win|color mean the same thing. */
+static int ui_streqi(const char *a, const char *b) {
+    for (; *a && *b; a++, b++) {
+        int ca = tolower((unsigned char)*a), cb = tolower((unsigned char)*b);
+        if (ca != cb) return 0;
+    }
+    return *a == *b;
+}
+#define streqi(a,b) ui_streqi((a),(b))
+
+/* One setter for every property. ui.set, a driver and a tween all call this,
+ * so there is exactly one answer to what a property means. */
+int bx_ui_set_field(bx_ui_element_t *e, const char *field, const char *value) {
+    if (!e || !field || !value) return -2;
+    double d = atof(value);
+
+    if (!strcmp(field, "x")) e->x = (float)d;
+    else if (!strcmp(field, "y")) e->y = (float)d;
+    else if (!strcmp(field, "w")) e->w = (float)d;
+    else if (!strcmp(field, "h")) e->h = (float)d;
+    else if (!strcmp(field, "minw")) e->min_w = (float)d;
+    else if (!strcmp(field, "minh")) e->min_h = (float)d;
+    else if (!strcmp(field, "gap")) e->gap = (float)d;
+    else if (!strcmp(field, "padx")) e->pad_x = (float)d;
+    else if (!strcmp(field, "pady")) e->pad_y = (float)d;
+    else if (!strcmp(field, "columns")) e->columns = atoi(value);
+    else if (!strcmp(field, "z")) e->z = atoi(value);
+    else if (!strcmp(field, "radius")) e->radius = atoi(value);
+    else if (!strcmp(field, "alpha")) e->theme.alpha = (uint8_t)d;
+    else if (!strcmp(field, "scroll")) e->scroll = (float)d;
+    else if (!strcmp(field, "value")) snprintf(e->value, sizeof e->value, "%s", value);
+    else if (!strcmp(field, "text")) snprintf(e->text, sizeof e->text, "%s", value);
+    else if (!strcmp(field, "style")) snprintf(e->style, sizeof e->style, "%s", value);
+    else if (!strcmp(field, "bxvg")) snprintf(e->bxvg, sizeof e->bxvg, "%s", value);
+    else if (!strcmp(field, "visible")) e->visible = atoi(value) ? 1 : 0;
+    else if (!strcmp(field, "selected")) e->selected = atoi(value) ? 1 : 0;
+    else if (!strcmp(field, "disabled")) e->disabled = atoi(value) ? 1 : 0;
+    else if (!strcmp(field, "color")) {
+        uint32_t c = bx_gfx_parse_color(value);
+        if (c == 0 && !streqi(value, "0")) return -2;
+        e->color = c;
+    }
+    else if (!strcmp(field, "color2")) {
+        uint32_t c = bx_gfx_parse_color(value);
+        if (c == 0 && !streqi(value, "0")) return -2;
+        e->color2 = c;
+    }
+    else if (!strcmp(field, "dock")) {
+        if (streqi(value,"left")) e->dock = BX_UI_DOCK_LEFT;
+        else if (streqi(value,"right")) e->dock = BX_UI_DOCK_RIGHT;
+        else if (streqi(value,"top")) e->dock = BX_UI_DOCK_TOP;
+        else if (streqi(value,"bottom")) e->dock = BX_UI_DOCK_BOTTOM;
+        else if (streqi(value,"center")) e->dock = BX_UI_DOCK_CENTER;
+        else if (streqi(value,"fill")) e->dock = BX_UI_DOCK_FILL;
+        else if (streqi(value,"none")) e->dock = BX_UI_DOCK_NONE;
+        else return -2;
+    }
+    else if (!strcmp(field, "material")) {
+        if (streqi(value,"matte")) e->material = BX_UI_MAT_MATTE;
+        else if (streqi(value,"glass")) e->material = BX_UI_MAT_GLASS;
+        else if (streqi(value,"flat")) e->material = BX_UI_MAT_FLAT;
+        else return -2;
+    }
+    else if (!strcmp(field, "theme")) {
+        if (bx_gfx_parse_theme(value, &e->theme) != 0) return -2;
+    }
+    else if (!strcmp(field, "align")) {
+        if (streqi(value,"start")) { e->align_h = e->align_v = BX_UI_ALIGN_START; }
+        else if (streqi(value,"center")) { e->align_h = e->align_v = BX_UI_ALIGN_CENTER; }
+        else if (streqi(value,"end")) { e->align_h = e->align_v = BX_UI_ALIGN_END; }
+        else if (streqi(value,"stretch")) { e->align_h = e->align_v = BX_UI_ALIGN_STRETCH; }
+        else return -2;
+    }
+    else if (!strcmp(field, "alignx")) {
+        if (streqi(value,"start")) e->align_h = BX_UI_ALIGN_START;
+        else if (streqi(value,"center")) e->align_h = BX_UI_ALIGN_CENTER;
+        else if (streqi(value,"end")) e->align_h = BX_UI_ALIGN_END;
+        else if (streqi(value,"stretch")) e->align_h = BX_UI_ALIGN_STRETCH;
+        else return -2;
+    }
+    else if (!strcmp(field, "aligny")) {
+        if (streqi(value,"start")) e->align_v = BX_UI_ALIGN_START;
+        else if (streqi(value,"center")) e->align_v = BX_UI_ALIGN_CENTER;
+        else if (streqi(value,"end")) e->align_v = BX_UI_ALIGN_END;
+        else if (streqi(value,"stretch")) e->align_v = BX_UI_ALIGN_STRETCH;
+        else return -2;
+    }
+    else if (!strcmp(field, "layout")) {
+        if (streqi(value,"none")) e->layout = BX_UI_LAYOUT_NONE;
+        else if (streqi(value,"row")) e->layout = BX_UI_LAYOUT_ROW;
+        else if (streqi(value,"column")||streqi(value,"col")) e->layout = BX_UI_LAYOUT_COLUMN;
+        else if (streqi(value,"grid")) e->layout = BX_UI_LAYOUT_GRID;
+        else if (streqi(value,"stack")) e->layout = BX_UI_LAYOUT_STACK;
+        else if (streqi(value,"wrap")) e->layout = BX_UI_LAYOUT_WRAP;
+        else return -2;
+    }
+    else if (!strcmp(field, "justify")) {
+        if (streqi(value,"start")) e->justify = BX_UI_JUSTIFY_START;
+        else if (streqi(value,"center")) e->justify = BX_UI_JUSTIFY_CENTER;
+        else if (streqi(value,"end")) e->justify = BX_UI_JUSTIFY_END;
+        else if (streqi(value,"between")||streqi(value,"space-between")) e->justify = BX_UI_JUSTIFY_SPACE_BETWEEN;
+        else return -2;
+    }
+    else {
+        /* An unknown field on a custom element is a config value, and it is
+         * kept rather than squeezed into the style slot, so it reads back. */
+        for (int i = 0; i < e->config_count; i++) {
+            if (streqi(e->config_key[i], field)) {
+                snprintf(e->config_val[i], BX_UI_CONFIG_VAL, "%s", value);
+                return -1;
+            }
+        }
+        if (e->config_count < BX_UI_MAX_CONFIG) {
+            snprintf(e->config_key[e->config_count], BX_UI_CONFIG_KEY, "%s", field);
+            snprintf(e->config_val[e->config_count], BX_UI_CONFIG_VAL, "%s", value);
+            e->config_count++;
+            return -1;
+        }
+        return -2;
+    }
+    return 0;
+}
+
+const char *bx_ui_config_get(const bx_ui_element_t *e, const char *key) {
+    if (!e || !key) return NULL;
+    for (int i = 0; i < e->config_count; i++)
+        if (streqi(e->config_key[i], key)) return e->config_val[i];
+    return NULL;
+}
+
+int bx_ui_get_field(const bx_ui_element_t *e, const char *field, char *buf, size_t cap) {
+    if (!e || !field || !buf || cap == 0) return -1;
+    const char *cfg;
+    if (!strcmp(field,"kind")||!strcmp(field,"kindname")) snprintf(buf,cap,"%s",bx_ui_kind_name(e->kind));
+    else if (!strcmp(field,"x")) snprintf(buf,cap,"%g",e->x);
+    else if (!strcmp(field,"y")) snprintf(buf,cap,"%g",e->y);
+    else if (!strcmp(field,"w")) snprintf(buf,cap,"%g",e->w);
+    else if (!strcmp(field,"h")) snprintf(buf,cap,"%g",e->h);
+    else if (!strcmp(field,"minw")) snprintf(buf,cap,"%g",e->min_w);
+    else if (!strcmp(field,"minh")) snprintf(buf,cap,"%g",e->min_h);
+    else if (!strcmp(field,"gap")) snprintf(buf,cap,"%g",e->gap);
+    else if (!strcmp(field,"padx")) snprintf(buf,cap,"%g",e->pad_x);
+    else if (!strcmp(field,"pady")) snprintf(buf,cap,"%g",e->pad_y);
+    else if (!strcmp(field,"radius")) snprintf(buf,cap,"%d",e->radius);
+    else if (!strcmp(field,"columns")) snprintf(buf,cap,"%d",e->columns);
+    else if (!strcmp(field,"z")) snprintf(buf,cap,"%d",e->z);
+    else if (!strcmp(field,"alpha")) snprintf(buf,cap,"%d",e->theme.alpha);
+    else if (!strcmp(field,"scroll")) snprintf(buf,cap,"%g",e->scroll);
+    else if (!strcmp(field,"text")) snprintf(buf,cap,"%s",e->text);
+    else if (!strcmp(field,"value")) snprintf(buf,cap,"%s",e->value);
+    else if (!strcmp(field,"style")) snprintf(buf,cap,"%s",e->style);
+    else if (!strcmp(field,"bxvg")) snprintf(buf,cap,"%s",e->bxvg);
+    else if (!strcmp(field,"visible")) snprintf(buf,cap,"%d",e->visible?1:0);
+    else if (!strcmp(field,"selected")) snprintf(buf,cap,"%d",e->selected?1:0);
+    else if (!strcmp(field,"disabled")) snprintf(buf,cap,"%d",e->disabled?1:0);
+    else if (!strcmp(field,"hovered")) snprintf(buf,cap,"%d",e->hovered?1:0);
+    else if (!strcmp(field,"pressed")) snprintf(buf,cap,"%d",e->pressed?1:0);
+    else if (!strcmp(field,"focused")) snprintf(buf,cap,"%d",e->focused?1:0);
+    else if (!strcmp(field,"children")) snprintf(buf,cap,"%d",e->child_count);
+    else if (!strcmp(field,"parent")) snprintf(buf,cap,"%s",e->parent);
+    else if (!strcmp(field,"color")) {
+        uint32_t c = e->color;
+        if (!BX_GFX_A(c)) c = 0;
+        snprintf(buf,cap,"0x%02x%02x%02x%02x",BX_GFX_R(c),BX_GFX_G(c),BX_GFX_B(c),BX_GFX_A(c));
+    }
+    else if (!strcmp(field,"material")) {
+        const char *m = e->material==BX_UI_MAT_GLASS?"glass":e->material==BX_UI_MAT_FLAT?"flat":"matte";
+        snprintf(buf,cap,"%s",m);
+    }
+    else if (!strcmp(field,"dock")) {
+        static const char *dn[]={"none","left","right","top","bottom","center","fill"};
+        snprintf(buf,cap,"%s",(e->dock>=0&&e->dock<=6)?dn[e->dock]:"none");
+    }
+    else if ((cfg = bx_ui_config_get(e, field)) != NULL) snprintf(buf,cap,"%s",cfg);
+    else return -1;
+    return 0;
+}
+
+/* ----------------------------------------------------------- math functions */
+
+int bx_ui_mathfn_define(const char *name, int kind, const double *p) {
+    if (!name || !*name) return -1;
+    for (int i = 0; i < g_bx_ui.mathfn_count; i++) {
+        if (streqi(g_bx_ui.mathfns[i].name, name)) {
+            g_bx_ui.mathfns[i].kind = kind;
+            for (int k = 0; k < 4; k++) g_bx_ui.mathfns[i].p[k] = p ? p[k] : 0.0;
+            return 0;
+        }
+    }
+    if (g_bx_ui.mathfn_count >= BX_UI_MAX_FNS2) return -1;
+    bx_ui_mfn_t *m = &g_bx_ui.mathfns[g_bx_ui.mathfn_count++];
+    memset(m, 0, sizeof *m);
+    snprintf(m->name, sizeof m->name, "%s", name);
+    m->kind = kind;
+    for (int k = 0; k < 4; k++) m->p[k] = p ? p[k] : 0.0;
+    return 0;
+}
+
+int bx_ui_mathfn_define_mxb(const char *name, double m, double b) {
+    double p[4] = { m, b, 0, 0 };
+    return bx_ui_mathfn_define(name, BX_UI_MFN_MXB, p);
+}
+
+/* A hash-based noise. Deterministic from t alone so a texture animated by it
+ * replays identically, which a random number generator would not. */
+static double ui_hash01(double t) {
+    uint64_t x = (uint64_t)(int64_t)(t * 1000.0);
+    x ^= x >> 33; x *= 0xff51afd7ed558ccdULL;
+    x ^= x >> 33; x *= 0xc4ceb9fe1a85ec53ULL;
+    x ^= x >> 33;
+    return (double)(x & 0xFFFFFFu) / (double)0xFFFFFF;
+}
+
+double bx_ui_mathfn_eval(const char *name, double t) {
+    if (!name) return 0.0;
+    const bx_ui_mfn_t *m = NULL;
+    for (int i = 0; i < g_bx_ui.mathfn_count; i++)
+        if (streqi(g_bx_ui.mathfns[i].name, name)) { m = &g_bx_ui.mathfns[i]; break; }
+    /* An undefined name is linear, not zero: a typo should make something
+     * move, not make something vanish. */
+    if (!m) return t;
+
+    switch (m->kind) {
+        case BX_UI_MFN_MXB:  return m->p[0] * t + m->p[1];
+        case BX_UI_MFN_SIN: {
+            double amp = m->p[0], freq = m->p[1], phase = m->p[2], off = m->p[3];
+            return off + amp * sin(2.0 * M_PI * freq * t + phase);
+        }
+        case BX_UI_MFN_TRI: {
+            double period = m->p[0] > 0 ? m->p[0] : 1.0;
+            double u = fmod(t, period) / period;
+            return u < 0.5 ? u * 2.0 : 2.0 - u * 2.0;
+        }
+        case BX_UI_MFN_DECAY: {
+            double k = m->p[0];
+            return exp(-(k > 0 ? k : 1.0) * t);
+        }
+        case BX_UI_MFN_STEP: {
+            double step = m->p[0] > 0 ? m->p[0] : 1.0;
+            return floor(t / step) * step;
+        }
+        case BX_UI_MFN_NOISE:
+            return ui_hash01(t * (m->p[0] > 0 ? m->p[0] : 1.0) + (m->p[1] != 0 ? m->p[1] : 0.0));
+        case BX_UI_MFN_SQRT:
+            return sqrt(t > 0 ? t : 0.0) * (m->p[0] != 0 ? m->p[0] : 1.0);
+        default:
+            return t;
+    }
+}
+
+int bx_ui_mathfn_count(void) { return g_bx_ui.mathfn_count; }
+const bx_ui_mfn_t *bx_ui_mathfn_at(int i) {
+    return (i >= 0 && i < g_bx_ui.mathfn_count) ? &g_bx_ui.mathfns[i] : NULL;
+}
+
+/* --------------------------------------------------------------- drivers */
+
+int bx_ui_drive(const char *id, const char *prop, int kind, const double *p,
+                const char *fn, const char *src_id, const char *src_prop) {
+    if (!id || !prop) return -1;
+    /* One driver per (element, property): a second one replaces the first,
+     * so re-driving a property mid-animation does not stack. */
+    for (int i = 0; i < g_bx_ui.driver_count; i++) {
+        bx_ui_driver_t *d = &g_bx_ui.drivers[i];
+        if (streqi(d->id, id) && streqi(d->prop, prop)) {
+            d->kind = kind;
+            snprintf(d->fn, sizeof d->fn, "%s", fn ? fn : "");
+            snprintf(d->src_id, sizeof d->src_id, "%s", src_id ? src_id : "");
+            snprintf(d->src_prop, sizeof d->src_prop, "%s", src_prop ? src_prop : "");
+            d->v = p ? p[0] : 0.0;
+            d->t0 = p ? p[1] : 0.0;
+            d->t1 = p ? p[2] : 1.0;
+            d->lo = p ? p[0] : 0.0;
+            d->hi = p ? p[3] : 1.0;
+            return 0;
+        }
+    }
+    if (g_bx_ui.driver_count >= BX_UI_MAX_DRIVERS) return -1;
+    bx_ui_driver_t *d = &g_bx_ui.drivers[g_bx_ui.driver_count++];
+    memset(d, 0, sizeof *d);
+    snprintf(d->id, sizeof d->id, "%s", id);
+    snprintf(d->prop, sizeof d->prop, "%s", prop);
+    d->kind = kind;
+    snprintf(d->fn, sizeof d->fn, "%s", fn ? fn : "");
+    snprintf(d->src_id, sizeof d->src_id, "%s", src_id ? src_id : "");
+    snprintf(d->src_prop, sizeof d->src_prop, "%s", src_prop ? src_prop : "");
+    d->v  = p ? p[0] : 0.0;
+    d->t0 = p ? p[1] : 0.0;
+    d->t1 = p ? p[2] : 1.0;
+    d->lo = p ? p[0] : 0.0;
+    d->hi = p ? p[3] : 1.0;
+    return 0;
+}
+
+int bx_ui_drive_count(void) { return g_bx_ui.driver_count; }
+const bx_ui_driver_t *bx_ui_drive_at(int i) {
+    return (i >= 0 && i < g_bx_ui.driver_count) ? &g_bx_ui.drivers[i] : NULL;
+}
+
+int bx_ui_apply_drivers(double t) {
+    (void)t;
+    int applied = 0;
+    for (int i = 0; i < g_bx_ui.driver_count; i++) {
+        bx_ui_driver_t *d = &g_bx_ui.drivers[i];
+        bx_ui_element_t *e = bx_ui_find(d->id);
+        if (!e) continue;
+        char buf[64];
+        switch (d->kind) {
+            case BX_UI_DRIVE_CONST:
+                snprintf(buf, sizeof buf, "%g", d->v);
+                break;
+            case BX_UI_DRIVE_MFN: {
+                /* Sample the function over [t0,t1] and put the result in
+                 * [lo,hi]. That is what makes a driver contextual: the same
+                 * function can drive a 0..1 opacity or a 0..400 pixel slide
+                 * just by changing the range. */
+                double span = d->t1 - d->t0;
+                double u = span != 0.0 ? (t - d->t0) / span : (t >= d->t1 ? 1.0 : 0.0);
+                if (u < 0.0) u = 0.0;
+                if (u > 1.0) u = 1.0;
+                double val = bx_ui_mathfn_eval(d->fn, t);
+                double lo = d->lo, hi = d->hi;
+                /* A function that already returns 0..1 is used directly as a
+                 * fraction; anything else is assumed to be an absolute value
+                 * and scaled into the range. */
+                double out = (val >= 0.0 && val <= 1.0) ? (lo + val * (hi - lo))
+                                                        : (lo + val);
+                snprintf(buf, sizeof buf, "%g", out);
+                break;
+            }
+            case BX_UI_DRIVE_WAVE: {
+                double val = bx_ui_mathfn_eval(d->fn, t);
+                /* Fold into [lo,hi] so an oscillating function stays in range
+                 * however far it swings. */
+                double k = val - floor(val);
+                snprintf(buf, sizeof buf, "%g", d->lo + k * (d->hi - d->lo));
+                break;
+            }
+            case BX_UI_DRIVE_MIRROR: {
+                bx_ui_element_t *s = bx_ui_find(d->src_id);
+                if (!s) continue;
+                char tmp[64];
+                if (bx_ui_get_field(s, d->src_prop, tmp, sizeof tmp) != 0) continue;
+                snprintf(buf, sizeof buf, "%s", tmp);
+                break;
+            }
+            default:
+                continue;
+        }
+        bx_ui_set_field(e, d->prop, buf);
+        applied++;
+    }
+    return applied;
+}
+
+/* --------------------------------------------------------------- textures */
+
+int bx_ui_texture_set(const char *id, int kind, const double *p,
+                      const char *fn, const char *c1, const char *c2) {
+    if (!id) return -1;
+    bx_ui_texture_t *t = NULL;
+    for (int i = 0; i < g_bx_ui.texture_count; i++)
+        if (streqi(g_bx_ui.textures[i].id, id)) { t = &g_bx_ui.textures[i]; break; }
+    if (!t) {
+        if (g_bx_ui.texture_count >= BX_UI_MAX_TEXTURES) return -1;
+        t = &g_bx_ui.textures[g_bx_ui.texture_count++];
+        memset(t, 0, sizeof *t);
+        snprintf(t->id, sizeof t->id, "%s", id);
+    }
+    t->kind = kind;
+    for (int k = 0; k < 4; k++) t->p[k] = p ? p[k] : 0.0;
+    snprintf(t->fn, sizeof t->fn, "%s", fn ? fn : "");
+    /* An unparseable colour used to fall back to the palette silently, which
+     * turned a typo into a texture in the wrong colours that still rendered.
+     * Say so instead. */
+    t->c1 = c1 ? bx_gfx_parse_color(c1) : 0;
+    t->c2 = c2 ? bx_gfx_parse_color(c2) : 0;
+    if (c1 && *c1 && !t->c1) fprintf(stderr,"ui texture %s: bad colour '%s', want #rrggbb or #rrggbbaa\n",id,c1);
+    if (c2 && *c2 && !t->c2) fprintf(stderr,"ui texture %s: bad colour '%s', want #rrggbb or #rrggbbaa\n",id,c2);
+    if (!t->c1) t->c1 = BX_UI_C_PANEL;
+    if (!t->c2) t->c2 = BX_UI_C_ACCENT;
+    t->active = 1;
+    return 0;
+}
+
+int bx_ui_texture_count(void) { return g_bx_ui.texture_count; }
+const bx_ui_texture_t *bx_ui_texture_at(int i) {
+    return (i >= 0 && i < g_bx_ui.texture_count) ? &g_bx_ui.textures[i] : NULL;
+}
+
+static const bx_ui_texture_t *ui_texture_of(const char *id) {
+    for (int i = 0; i < g_bx_ui.texture_count; i++)
+        if (streqi(g_bx_ui.textures[i].id, id) && g_bx_ui.textures[i].active)
+            return &g_bx_ui.textures[i];
+    return NULL;
+}
+
+/* Fill an element's rect from its texture. Every pattern is a function of the
+ * pixel's position and, where it matters, of the clock: a stripe is
+ * sin(k*(x+y)), a checker is (x/s + y/s) & 1, noise is a hash of position and
+ * time. That is why a texture can be animated by tweening time rather than by
+ * touching pixels. */
+int bx_ui_texture_draw(bx_gfx_fb_t *fb, bx_ui_element_t *e) {
+    if (!fb || !e) return 0;
+    const bx_ui_texture_t *t = ui_texture_of(e->id);
+
+    if (!t) return 0;
+
+    int32_t x0 = (int32_t)e->x, y0 = (int32_t)e->y, w = (int32_t)e->w, h = (int32_t)e->h;
+    if (w <= 0 || h <= 0) return 0;
+    double tt = g_bx_ui.clock.elapsed;
+
+    for (int32_t yy = 0; yy < h; yy++) {
+        for (int32_t xx = 0; xx < w; xx++) {
+            int32_t px = x0 + xx, py = y0 + yy;
+            uint32_t c = t->c1;
+            double fx = (double)xx, fy = (double)yy;
+
+            switch (t->kind) {
+                case BX_UI_TEX_GRADV:
+                    c = bx_gfx_color_lerp(t->c1, t->c2, h > 1 ? (yy * 256) / (h - 1) : 0);
+                    break;
+                case BX_UI_TEX_GRADH:
+                    c = bx_gfx_color_lerp(t->c1, t->c2, w > 1 ? (xx * 256) / (w - 1) : 0);
+                    break;
+                case BX_UI_TEX_CHECKER: {
+                    double s = t->p[0] > 0 ? t->p[0] : 8.0;
+                    int64_t cx = (int64_t)floor(fx / s), cy = (int64_t)floor(fy / s);
+                    c = ((cx + cy) & 1) ? t->c2 : t->c1;
+                    break;
+                }
+                case BX_UI_TEX_STRIPES: {
+                    /* Diagonal stripes: the dot product of the position with
+                     * the stripe direction, so one number decides the colour. */
+                    double ang = t->p[0];
+                    double period = t->p[1] > 0 ? t->p[1] : 8.0;
+                    /* p2 slides the pattern, in periods per second. The
+                     * offset goes in before the floor, not after it: adding a
+                     * whole number of periods later would only ever move the
+                     * stripes once per second. */
+                    double v = (fx * cos(ang * M_PI / 180.0) + fy * sin(ang * M_PI / 180.0))
+                             + t->p[2] * tt * period;
+                    c = (((int64_t)floor(v / period) & 1) == 0) ? t->c1 : t->c2;
+                    break;
+                }
+                case BX_UI_TEX_DOTS: {
+                    double period = t->p[0] > 0 ? t->p[0] : 10.0;
+                    double rad = t->p[1];
+                    double dx = fmod(fx, period) - period / 2.0;
+                    double dy = fmod(fy, period) - period / 2.0;
+                    double d2 = dx * dx + dy * dy;
+                    c = (rad > 0 && d2 <= rad * rad) ? t->c2 : t->c1;
+                    break;
+                }
+                case BX_UI_TEX_GRID: {
+                    double step = t->p[0] > 0 ? t->p[0] : 8.0;
+                    int on_x = fmod(fx, step) < 1.0;
+                    int on_y = fmod(fy, step) < 1.0;
+                    c = (on_x || on_y) ? t->c2 : t->c1;
+                    break;
+                }
+                case BX_UI_TEX_NOISE: {
+                    double s = t->p[0] > 0 ? t->p[0] : 1.0;
+                    c = bx_gfx_color_lerp(t->c1, t->c2, (int32_t)(ui_hash01(px * 7.13 + py * 3.71 + tt * s * 13.0) * 256.0));
+                    break;
+                }
+                case BX_UI_TEX_RING: {
+                    double cx = w / 2.0, cy = h / 2.0;
+                    double d = sqrt((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy));
+                    double period = t->p[0] > 0 ? t->p[0] : 8.0;
+                    double wdt = t->p[1] > 0 ? t->p[1] : 2.0;
+                    c = (fmod(d + tt * t->p[2], period) < wdt) ? t->c2 : t->c1;
+                    break;
+                }
+                case BX_UI_TEX_WAVE: {
+                    double amp = t->p[0], freq = t->p[1], phase = t->p[2] * tt;
+                    double v = amp * sin((fx / (freq > 0 ? freq : 20.0)) + phase);
+                    c = bx_gfx_color_lerp(t->c1, t->c2, (int32_t)((v * 0.5 + 0.5) * 256.0));
+                    break;
+                }
+                case BX_UI_TEX_MFN: {
+                    double v = bx_ui_mathfn_eval(t->fn, fy + tt);
+                    double u = (v < 0.0) ? 0.0 : (v > 1.0 ? 1.0 : v);
+                    c = bx_gfx_color_lerp(t->c1, t->c2, (int32_t)(u * 256.0));
+                    break;
+                }
+                case BX_UI_TEX_SOLID:
+                default:
+                    c = t->c1;
+                    break;
+            }
+            /* An element colour set with ui set tints the texture rather than
+             * replacing it, so a pattern can be recoloured without being
+             * redefined. */
+            if (e->color && BX_GFX_A(e->color)) c = bx_gfx_color_lerp(c, e->color, 128);
+            if (e->theme.alpha) c = bx_gfx_color_scale_alpha(c, (int32_t)e->theme.alpha * 256 / 100);
+            bx_gfx_plot(fb, px, py, c);
+        }
+    }
+    return 1;
+}
+
+
+void bx_ui_drive_remove(const char *id, const char *prop) {
+    if (!id) return;
+    for (int i = 0; i < g_bx_ui.driver_count; i++) {
+        if (streqi(g_bx_ui.drivers[i].id, id) &&
+            (!prop || streqi(g_bx_ui.drivers[i].prop, prop))) {
+            memmove(&g_bx_ui.drivers[i], &g_bx_ui.drivers[i+1],
+                    (size_t)(g_bx_ui.driver_count - 1 - i) * sizeof g_bx_ui.drivers[i]);
+            g_bx_ui.driver_count--;
+            i--;
+        }
+    }
 }

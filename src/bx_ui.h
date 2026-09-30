@@ -39,10 +39,31 @@ extern "C" {
 #define BX_UI_MAX_TWEENS  256
 #define BX_UI_MAX_FNS     64
 #define BX_UI_MAX_CHILDREN 64
+/* A custom element is a bag of values, so it needs somewhere to keep them.
+ * Fixed rather than allocated: the element array is static, and an element
+ * that costs a pointer chase to configure is a worse trade than 8 slots. */
+#define BX_UI_MAX_CONFIG  8
+#define BX_UI_CONFIG_KEY  20
+#define BX_UI_CONFIG_VAL  48
+/* Drivers: one property of one element, recomputed every frame. */
+#define BX_UI_MAX_DRIVERS 256
+/* Procedural textures, computed per pixel from math. */
+#define BX_UI_MAX_TEXTURES 64
+#define BX_UI_MAX_FNS2    64
 #define BX_UI_FPS_DEFAULT 60
 
 /* Element kinds. Custom kinds start at BX_UI_KIND_CUSTOM so a user element
  * never collides with a built-in one. */
+/* What a surface is made of. Matte is opaque and flat: a solid panel that
+ * hides whatever is behind it. Glass is translucent with a lit edge and a
+ * vertical sheen, so it reads as a surface with light on it rather than a
+ * rectangle of slightly see-through paint. */
+typedef enum {
+    BX_UI_MAT_MATTE = 0,
+    BX_UI_MAT_GLASS,
+    BX_UI_MAT_FLAT      /* no fill at all, just the outline */
+} bx_ui_material_t;
+
 typedef enum {
     BX_UI_KIND_FRAME = 0,
     BX_UI_KIND_PANE,
@@ -147,9 +168,16 @@ typedef struct {
 
     /* Appearance. */
     bx_gfx_theme_t theme;
+    bx_ui_material_t material;
+    int      radius;           /* corner radius in pixels, 0 for square */
     char     text[128];
     char     value[64];       /* slider/textbox/check value, as text */
     char     style[32];       /* named style preset */
+    /* Free-form settings, for custom kinds and for fields the layer does not
+     * know yet. Read back with ui get like any other field. */
+    char     config_key[BX_UI_MAX_CONFIG][BX_UI_CONFIG_KEY];
+    char     config_val[BX_UI_MAX_CONFIG][BX_UI_CONFIG_VAL];
+    int      config_count;
     char     bxvg[64];        /* for icons: the bxvg document id */
     uint32_t color, color2;
 
@@ -208,10 +236,110 @@ typedef struct {
     double   dt;             /* seconds since the previous step */
     double   acc;            /* unsimulated time carried forward */
     uint64_t frame;          /* steps taken */
+    /* Total simulated time, in seconds, since the clock started. Everything
+     * that is a function of time -- drivers, and texture animation -- reads
+     * this rather than the wall clock, so a fixed-step frame advances it the
+     * same way a real one does and a test is reproducible. */
+    double   elapsed;
+    double   pending;       /* fixed delta a single-shot frame will commit */
     double   now;
     int      running;
     int      single_shot;    /* frame runs one step then stops */
 } bx_ui_clock_t;
+
+/* ----------------------------------------------------------- math functions */
+
+/* A named function of t. These are what make a property be math instead of a
+ * number: the same shape as an easing curve, but unbounded and not tied to
+ * the 0..1 that a tween spends. */
+enum {
+    BX_UI_MFN_MXB = 0,   /* y = mx + b, the null model everything else departs from */
+    BX_UI_MFN_SIN,       /* amp*sin(2*pi*freq*t + phase) + offset */
+    BX_UI_MFN_TRI,       /* triangle wave: 0..1..0, for motion that must not ease */
+    BX_UI_MFN_DECAY,     /* exp(-k*t): for something that settles and stays */
+    BX_UI_MFN_STEP,      /* quantised, for a value that should not be continuous */
+    BX_UI_MFN_NOISE,     /* deterministic hash of t, for flicker and shimmer */
+    BX_UI_MFN_SQRT       /* sqrt, which is slower and therefore reads as weight */
+};
+
+typedef struct {
+    char   name[BX_UI_ID_MAX];
+    int    kind;
+    double p[4];
+} bx_ui_mfn_t;
+
+int  bx_ui_mathfn_define_mxb(const char *name, double m, double b);
+int  bx_ui_mathfn_define(const char *name, int kind, const double *p);
+double bx_ui_mathfn_eval(const char *name, double t);
+int  bx_ui_mathfn_count(void);
+const bx_ui_mfn_t *bx_ui_mathfn_at(int i);
+
+/* --------------------------------------------------------------- drivers */
+
+/* What computes a property each frame. A driver names an element and a
+ * property, and a source: a constant, a math function of time, a function
+ * remapped onto a range, or another element's property. */
+enum {
+    BX_UI_DRIVE_CONST = 0,
+    BX_UI_DRIVE_MFN,      /* fn|t0|t1|lo|hi  - remapped into a range */
+    BX_UI_DRIVE_MIRROR,   /* mirror|id|prop   - follows another element */
+    BX_UI_DRIVE_WAVE      /* fn|lo|hi        - oscillates between lo and hi */
+};
+
+typedef struct {
+    char   id[BX_UI_ID_MAX];
+    char   prop[24];
+    int    kind;
+    double v;             /* CONST */
+    char   fn[BX_UI_ID_MAX];
+    double t0, t1;        /* MFN: the time window the function is sampled over */
+    double lo, hi;        /* MFN/WAVE: the range the result lands in */
+    char   src_id[BX_UI_ID_MAX];  /* MIRROR */
+    char   src_prop[24];
+} bx_ui_driver_t;
+
+int  bx_ui_drive(const char *id, const char *prop, int kind, const double *p,
+                 const char *fn, const char *src_id, const char *src_prop);
+int  bx_ui_drive_count(void);
+const bx_ui_driver_t *bx_ui_drive_at(int i);
+void bx_ui_drive_remove(const char *id, const char *prop);
+/* Evaluate every driver. Called once per frame, before layout and render. */
+int  bx_ui_apply_drivers(double t);
+
+/* --------------------------------------------------------------- textures */
+
+/* A fill computed per pixel from math rather than stored as an image. Cheap
+ * to animate, because animating a texture means evaluating the function
+ * again with a new t, not pushing pixels. */
+enum {
+    BX_UI_TEX_SOLID = 0,
+    BX_UI_TEX_GRADV,
+    BX_UI_TEX_GRADH,
+    BX_UI_TEX_CHECKER,
+    BX_UI_TEX_STRIPES,
+    BX_UI_TEX_DOTS,
+    BX_UI_TEX_GRID,
+    BX_UI_TEX_NOISE,
+    BX_UI_TEX_RING,
+    BX_UI_TEX_WAVE,      /* amplitude*sin(freq*x + phase) modulating c1..c2 */
+    BX_UI_TEX_MFN        /* a math function of y drives the gradient */
+};
+
+typedef struct {
+    char     id[BX_UI_ID_MAX];
+    int      kind;
+    double   p[4];        /* pattern parameters, meaning depends on kind */
+    char     fn[BX_UI_ID_MAX];
+    uint32_t c1, c2;
+    int      active;
+} bx_ui_texture_t;
+
+int bx_ui_texture_set(const char *id, int kind, const double *p,
+                      const char *fn, const char *c1, const char *c2);
+int bx_ui_texture_count(void);
+const bx_ui_texture_t *bx_ui_texture_at(int i);
+/* Draw an element's texture, if it has one. Returns 1 if it drew. */
+int bx_ui_texture_draw(bx_gfx_fb_t *fb, bx_ui_element_t *e);
 
 typedef struct {
     bx_ui_element_t els[BX_UI_MAX_ELEMENTS];
@@ -219,6 +347,12 @@ typedef struct {
     bx_ui_tween_t tweens[BX_UI_MAX_TWEENS];
     bx_ui_fn_t   fns[BX_UI_MAX_FNS];
     bx_ui_clock_t clock;
+    bx_ui_driver_t drivers[BX_UI_MAX_DRIVERS];
+    int         driver_count;
+    bx_ui_texture_t textures[BX_UI_MAX_TEXTURES];
+    int         texture_count;
+    bx_ui_mfn_t mathfns[BX_UI_MAX_FNS2];
+    int         mathfn_count;
     char       focused[BX_UI_ID_MAX];
     char       active_frame[BX_UI_ID_MAX];
 } bx_ui_ctx_t;
@@ -269,6 +403,18 @@ double bx_ui_ease(const char *name, double t);
 int  bx_ui_fn_count(void);
 const bx_ui_fn_t *bx_ui_fn_at(int index);
 
+/* --------------------------------------------------------------- fields */
+
+/* The one place a property is written. ui.set, a driver, and a tween all go
+ * through here, which is what lets any property be driven by math without a
+ * second code path that can disagree about what "x" means.
+ * Returns 0 on success, -1 if the field is unknown and was stored as a
+ * config value, -2 if the value did not make sense. */
+int bx_ui_set_field(bx_ui_element_t *e, const char *field, const char *value);
+/* Read a property back into buf. Returns 0 on success, -1 if unknown. */
+int bx_ui_get_field(const bx_ui_element_t *e, const char *field, char *buf, size_t cap);
+const char *bx_ui_config_get(const bx_ui_element_t *e, const char *key);
+
 /* --------------------------------------------------------------- render */
 /* Draw the tree into a framebuffer. Returns how many elements were drawn.
  * The framebuffer must already be the right size; ui render clears nothing,
@@ -293,6 +439,9 @@ static const uint32_t BX_UI_C_ACCENT_DK = 0x2A8D81FFu;
 /* ---------------------------------------------------------------- clock */
 void bx_ui_clock_reset(int fps);
 int  bx_ui_frame_step(void);   /* advance one paced step, returns 1 if stepped */
+/* Advance simulated time by dt, ticking tweens and then drivers, in that
+ * order. ui frame|step|DT is this, and so is every paced frame. */
+void bx_ui_frame_step_dt(double dt);
 double bx_ui_now(void);
 
 #ifdef __cplusplus

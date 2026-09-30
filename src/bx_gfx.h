@@ -93,6 +93,19 @@ uint32_t bx_gfx_get(bx_gfx_fb_t *fb, int32_t x, int32_t y);
 void bx_gfx_line(bx_gfx_fb_t *fb, int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t c);
 void bx_gfx_rect(bx_gfx_fb_t *fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t c);
 void bx_gfx_rect_outline(bx_gfx_fb_t *fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t c);
+/* Rounded rectangles. r is the corner radius in pixels and is clamped to half
+ * the shorter side, so a large radius gives a stadium rather than a mess. */
+void bx_gfx_rect_round(bx_gfx_fb_t *fb, int32_t x, int32_t y, int32_t w, int32_t h,
+                       int32_t r, uint32_t c);
+void bx_gfx_rect_round_outline(bx_gfx_fb_t *fb, int32_t x, int32_t y, int32_t w, int32_t h,
+                               int32_t r, uint32_t c);
+/* Linear gradient over a rounded rect: glass needs the sheen, and a gradient
+ * that ignores the corner radius shows it as a rectangle again. */
+void bx_gfx_rect_round_gradient_v(bx_gfx_fb_t *fb, int32_t x, int32_t y, int32_t w, int32_t h,
+                                  int32_t r, uint32_t top, uint32_t bottom);
+int  bx_gfx_round_inside(int32_t px, int32_t py, int32_t x, int32_t y,
+                         int32_t w, int32_t h, int32_t r);
+
 void bx_gfx_circle(bx_gfx_fb_t *fb, int32_t cx, int32_t cy, int32_t r, uint32_t c);
 void bx_gfx_circle_outline(bx_gfx_fb_t *fb, int32_t cx, int32_t cy, int32_t r, uint32_t c);
 void bx_gfx_tri(bx_gfx_fb_t *fb, float x0, float y0, float x1, float y1,
