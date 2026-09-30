@@ -20,7 +20,7 @@ KERNEL_LDFLAGS = -m elf_i386 -T src/kernel.ld -nostdlib -z max-page-size=0x1000
 QEMU = qemu-system-x86_64
 QEMU_FLAGS = -m 256M -serial mon:stdio -display gtk,gl=on -kernel
 
-.PHONY: all features gfx-tests gfx2-tests snd-tests math-tests friendly-tests bxe-tests packagetests install install-user uninstall clean smoke targets run-example asm-example raw-example compile-example os run-os run-os-vm run-os-gfx run-kernel verify-kernel clean-kernel distclean
+.PHONY: all features gfx-tests gfx2-tests snd-tests math-tests friendly-tests bxe-tests packagetests site serve-site tunnel tunnel-only install install-user uninstall clean smoke targets run-example asm-example raw-example compile-example os run-os run-os-vm run-os-gfx run-kernel verify-kernel clean-kernel distclean
 
 all: bx
 
@@ -147,6 +147,38 @@ packagetests: bx
 
 targets: bx
 	./bx targets
+
+# Website. docs.html and packages.html are generated from sources in the repo,
+# so the site cannot drift from the manual or the registry.
+site:
+	@python3 scripts/gen-site.py
+
+serve-site: site
+	@echo "serving site/ on http://127.0.0.1:8000 (ctrl-c to stop)"
+	@cd site && python3 -m http.server 8000 --bind 127.0.0.1
+
+# Cloudflare quick tunnel: gives the local site a temporary public URL so it can
+# be checked on a phone or shared before a real host exists. The tunnel is
+# public while it runs, so stop it when you are done looking.
+CLOUDFLARED ?= $(shell command -v cloudflared 2>/dev/null || echo .build/cloudflared)
+CF_ARCH ?= $(shell uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/; s/armv7l/arm/')
+
+.build/cloudflared:
+	@mkdir -p .build
+	@curl -fsSL -o $@.tmp \
+	  "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$(CF_ARCH)" \
+	  && chmod +x $@.tmp && mv $@.tmp $@ \
+	  && echo "fetched cloudflared into $@"
+
+tunnel: site .build/cloudflared
+	@echo "starting site server and quick tunnel; the trycloudflare.com URL prints below"
+	@cd site && python3 -m http.server 8000 --bind 127.0.0.1 & \
+	  sleep 1; \
+	  .build/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000; \
+	  kill %1 2>/dev/null || true
+
+tunnel-only: .build/cloudflared
+	@.build/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000
 
 run-example: bx $(EXAMPLE)
 	./bx run $(EXAMPLE)

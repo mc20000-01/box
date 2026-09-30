@@ -129,7 +129,7 @@ static int bx_snd_wav(const char *p){ (void)p; return -1; }
 #ifndef BX_RUNTIME_PATH
 #define BX_RUNTIME_PATH "src/bx.c"
 #endif
-#define BX_VERSION "0.1.0"
+#define BX_VERSION "0.2.0"
 
 typedef struct { char *name; char *value; int inl; char ibuf[16]; long ival; int has_ival; } Box;
 typedef struct { Box *items; size_t len, cap; } Boxes;

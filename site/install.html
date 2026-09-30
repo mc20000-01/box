@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install - BoxedLANG</title>
+<meta name="description" content="Install BoxedLANG from source, with the installer script, or cross compile it for 19 architectures.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="top">
+    <div class="inner">
+        <a class="brand" href="index.html"><span class="sq">BX</span>BoxedLANG</a>
+                <a class="nav" href="index.html">Home</a>
+        <a class="nav" href="docs.html">Docs</a>
+        <a class="nav" href="packages.html">Packages</a>
+        <a class="nav active" href="install.html">Install</a>
+        <span class="spacer"></span>
+        <a class="nav" href="https://github.com/mc20000-01/boxed" rel="noopener">GitHub</a>
+    </div>
+</nav>
+<main class="wrap">
+
+<h1>Install</h1>
+<p class="lead">BoxedLANG is a single C program. Build it from source, or use
+the installer script for your platform.</p>
+
+<h2>From source</h2>
+<p>Requires a C99 compiler and GNU make. No other dependencies.</p>
+<pre><code>git clone https://github.com/mc20000-01/boxed.git
+cd boxed
+make</code></pre>
+<p>That produces <code>./bx</code> in the repository root. Check it:</p>
+<pre><code>$ ./bx version
+BoxedLANG version 0.2.0
+Up to date.</code></pre>
+<p>To install the runner and the package registry system-wide:</p>
+<pre><code>sudo make install          # /usr/local/bin/bx
+make install-user          # ~/.local/bin/bx, no root needed</code></pre>
+
+<h2>Installer script</h2>
+<p>On Linux and macOS:</p>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/mc20000-01/boxed/main/install.sh | bash</code></pre>
+<p>On Windows, PowerShell:</p>
+<pre><code>irm https://raw.githubusercontent.com/mc20000-01/boxed/main/install.ps1 | iex</code></pre>
+<p>The script has a TUI. Run it with no arguments for the menu, or use the
+flags directly:</p>
+<pre><code>./install.sh --user        # install into ~/.local
+./install.sh --system      # install into /usr/local
+./install.sh --auto-detect # pick a mode and install
+./install.sh --jit         # build with the JIT enabled</code></pre>
+
+<h2>Cross compiling</h2>
+<p>A BoxedLANG program compiles to a freestanding binary. Target toolchains are
+named rather than configured:</p>
+<pre><code>./bx compile hello.bx -o hello --target x86_64
+./bx compile hello.bx -o hello --target riscv64
+./bx compile hello.bx -o hello --target aarch64
+./bx targets</code></pre>
+<p>The runner never guesses a sysroot. If the named toolchain is not on your
+<code>PATH</code>, install it first. Nothing is linked against libc, so the
+result boots on bare metal.</p>
+
+<h2>Running without an operating system</h2>
+<pre><code>./bx compile os/os.bx -o boxed-os
+qemu-system-x86_64 -kernel boxed-os</code></pre>
+<p>The repository also ships a Multiboot1 kernel that runs a BoxedLANG program
+with graphics output. <code>make run-kernel</code> builds and boots it.</p>
+
+<h2>Test suite</h2>
+<p>Every part of the project is covered by BoxedLANG test scripts:</p>
+<pre><code>make smoke           # run, transpile, compile, asm, raw
+make features         # language core
+make gfx-tests        # rasteriser
+make snd-tests        # synthesiser and WAV export
+make math-tests       # math and 3D
+make friendly-tests   # package wrappers
+make bxe-tests        # environment marshalling
+make packagetests     # package manager</code></pre>
+
+</main>
+<footer>
+    BoxedLANG v0.2.0 &middot; <a href="https://github.com/mc20000-01/boxed">source</a> &middot;
+    <a href="https://github.com/mc20000-01/BoxPkg">BoxPkg registry</a>
+</footer>
+</body>
+</html>

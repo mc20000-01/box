@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Docs - BoxedLANG</title>
+<meta name="description" content="The complete BoxedLANG user's manual: boxes, jumps, loops, packages, libraries, and compile targets.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="top">
+    <div class="inner">
+        <a class="brand" href="index.html"><span class="sq">BX</span>BoxedLANG</a>
+                <a class="nav" href="index.html">Home</a>
+        <a class="nav active" href="docs.html">Docs</a>
+        <a class="nav" href="packages.html">Packages</a>
+        <a class="nav" href="install.html">Install</a>
+        <span class="spacer"></span>
+        <a class="nav" href="https://github.com/mc20000-01/boxed" rel="noopener">GitHub</a>
+    </div>
+</nav>
+<main class="wrap">
+<div class="note"><strong>This is the manual, rendered.</strong> It is generated from <code>box-docs-redone.md</code> in the repository, so the site and the source never disagree.</div>
+<details class="toc" open>
+<summary>Contents</summary>
+<ol>
+<li><a href="#chapter-1-meet-your-new-best-friend-the-box">CHAPTER 1: MEET YOUR NEW BEST FRIEND, THE BOX!</a></li>
+<li><a href="#chapter-2-writing-your-first-program">CHAPTER 2: WRITING YOUR FIRST PROGRAM</a></li>
+<li><a href="#chapter-3-talking-and-listening">CHAPTER 3: TALKING AND LISTENING</a></li>
+<li><a href="#chapter-4-computer-math">CHAPTER 4: COMPUTER MATH</a></li>
+<li><a href="#chapter-5-making-decisions">CHAPTER 5: MAKING DECISIONS</a></li>
+<li><a href="#chapter-6-jumping-around">CHAPTER 6: JUMPING AROUND!</a></li>
+<li><a href="#chapter-7-advanced-tricks-for-power-users">CHAPTER 7: ADVANCED TRICKS FOR POWER USERS</a></li>
+<li><a href="#chapter-8-driving-bx-from-your-shell">CHAPTER 8: DRIVING BX FROM YOUR SHELL</a></li>
+<li><a href="#chapter-9-implementations-and-compile-targets">CHAPTER 9: IMPLEMENTATIONS AND COMPILE TARGETS</a></li>
+</ol>
+</details>
+<h1 id="the-boxedlang-user-s-manual">THE BOXEDLANG USER'S MANUAL!</h1>
+<h3 id="a-programmer-s-guide">A Programmer's Guide</h3>
+<p>Welcome to the exciting world of programming, You are about to unlock the full potential of your computer using BoxedLANG, or <strong>BX</strong> for short. BX is a wonderfully simple but powerful command-oriented programming language built entirely around a fun and easy-to-understand concept: <strong>boxes</strong>.</p>
+<p>Whether you want to build a calculator, write a text adventure, or just make your screen light up with text, BX gives you the tools to make it happen. Let's dive right in and start communicating with your machine!</p>
+<hr>
+<h2 id="chapter-1-meet-your-new-best-friend-the-box">CHAPTER 1: MEET YOUR NEW BEST FRIEND, THE BOX!</h2>
+<p>Imagine a little mailbox inside your computer's memory. In BX, a box stores a value under a specific name.</p>
+<p>To create your very first box, you simply use the <code>box</code> command followed by the name you want to give it, the special <code>|</code> symbol (which BX uses to separate arguments), and the value you want to put inside.</p>
+<p>For example:</p>
+<pre><code class="language-bx">box name|mc20000
+</code></pre>
+<p>This creates a box named <code>name</code> containing the text <code>mc20000</code>.</p>
+<p>Whenever you want to pull that information back out and use it, you just place a <code>$</code> symbol right in front of the box's name. If you want your computer to speak to you, you can combine this with the <code>say</code> command:</p>
+<pre><code class="language-bx">say Hello $name
+</code></pre>
+<p>Your computer will proudly output:</p>
+<pre><code class="language-text">Hello mc20000
+</code></pre>
+<p>.</p>
+<p>You can change what is inside a box at any time! Assigning to an existing box simply replaces its previous value.</p>
+<pre><code class="language-bx">box score|10
+box score|20
+say $score
+</code></pre>
+<p>This will print <code>20</code> because the old score was replaced.</p>
+<p>Box names are not as strict as you might think. A name can contain letters, digits, and the characters <code>_</code>, <code>-</code>, <code>?</code>, and <code>#</code>. That is why BX programs can have boxes called <code>file-usr</code>, <code>boot?</code>, or <code>#1</code>.</p>
+<p>Boxes can even contain references to <em>other</em> boxes. Values are resolved when the <code>box</code> command runs, so if <code>name</code> already holds <code>BX</code>, a box whose value is <code>Hello \)name</code> stores the text <code>Hello BX</code>. This is what lets a box be a little template.</p>
+<hr>
+<h2 id="chapter-2-writing-your-first-program">CHAPTER 2: WRITING YOUR FIRST PROGRAM</h2>
+<p>Are you ready to write a real program? Create a file on your disk named <code>hello.bx</code>.</p>
+<p>Type these exact lines into your file:</p>
+<pre><code class="language-bx">box name|BX
+say Hello from $name!
+end
+</code></pre>
+<p>.</p>
+<p>When you run this, your program will perform three magic steps:</p>
+<ol>
+<li>It creates a box called <code>name</code>.</li>
+</ol>
+<ol>
+<li>It prints a message containing the contents of your box.</li>
+</ol>
+<ol>
+<li>It uses the <code>end</code> command to tell the computer the program is finished.</li>
+</ol>
+<p>Output:</p>
+<pre><code class="language-text">Hello from BX!
+</code></pre>
+<p>.</p>
+<h3 id="the-golden-rules-of-bx-syntax">The Golden Rules of BX Syntax</h3>
+<ul>
+<li><strong>The Separator:</strong> The vertical bar <code>|</code> is BX's normal argument separator. You will use it to split up the different pieces of your commands.</li>
+</ul>
+<ul>
+<li><strong>Whitespace is Preserved:</strong> If you put spaces inside a value, BX respects them exactly as written. For example, <code>box message|Hello     world</code> keeps all those spaces perfectly intact because the <code>|</code> character is the only thing that officially ends a value.</li>
+</ul>
+<ul>
+<li><strong>Case Doesn't Matter:</strong> Commands are not normally case-sensitive. Typing <code>SAY Hello</code> works exactly the same as <code>say Hello</code>.</li>
+</ul>
+<ul>
+<li><strong>Comments:</strong> If you ever want to leave a note for yourself in your code, just use <code>//</code>. Everything after the <code>//</code> is treated as a comment and ignored by the computer.</li>
+</ul>
+<ul>
+<li><strong>Unknown commands do nothing:</strong> BX never crashes on a command it does not know. The line is simply skipped, so a typo costs you one step and nothing else.</li>
+</ul>
+<hr>
+<h2 id="chapter-3-talking-and-listening">CHAPTER 3: TALKING AND LISTENING</h2>
+<h3 id="printing-with-say">Printing with SAY</h3>
+<p>The <code>say</code> command prints text to your output screen.</p>
+<pre><code class="language-bx">say Hello
+</code></pre>
+<p>.</p>
+<p>If you want to add a dramatic pause, you can add a time delay as an optional second argument.</p>
+<pre><code class="language-bx">say Hello|1
+</code></pre>
+<p>This prints "Hello" and then waits for the specified amount of time before moving to the next instruction. If you want absolutely no delay, you can explicitly type <code>|0</code>.</p>
+<h3 id="getting-input-with-ask">Getting Input with ASK</h3>
+<p>What if you want the user to type something in? Use the <code>ask</code> command! <code>ask</code> reads input from the user and safely tucks it away into a box.</p>
+<p>Here is the most important rule for <code>ask</code>: <strong>The last space-separated word is always the target box</strong>. Everything before that final word is printed as the prompt for the user.</p>
+<pre><code class="language-bx">ask What is your name username
+</code></pre>
+<p>In this example, the prompt is "What is your name" and the user's answer gets stored in the box <code>$username</code>.</p>
+<p>If you just type <code>ask username</code>, there is no prompt message, and the computer just waits for the user to type something to put into <code>$username</code>.</p>
+<p>Because box names may contain digits and <code>#</code>, <code>ask #1</code> and <code>ask op</code> are perfectly legal. The built-in boxed-OS uses this heavily: <code>ask #1</code>, <code>ask op</code>, <code>ask #2</code> collects a calculator expression with no prompt at all.</p>
+<hr>
+<h2 id="chapter-4-computer-math">CHAPTER 4: COMPUTER MATH</h2>
+<p>Your computer is a giant calculator, and BX lets you tap into that power using the <code>math</code> command! It performs integer arithmetic.</p>
+<p>The syntax looks like this: <code>math TARGET|LEFT|RIGHT|OP</code>.</p>
+<ul>
+<li><strong>TARGET:</strong> The box where the answer will be saved.</li>
+<li><strong>LEFT &amp; RIGHT:</strong> The numbers you want to calculate.</li>
+<li><strong>OP:</strong> The operator you want to use.</li>
+</ul>
+<p>BX supports addition (<code>+</code>), subtraction (<code>-</code>), multiplication (<code>*</code> or <code>x</code>), integer division (<code>/</code>), and modulo (<code>%</code>).</p>
+<pre><code class="language-bx">box a|20
+box b|7
+
+math add|$a|$b|+
+say The sum is $add
+</code></pre>
+<p>. Because BX uses integer arithmetic, dividing 10 by 3 (<code>math answer|10|3|/</code>) will give you <code>3</code>, not a decimal. Also, if you ever accidentally try to divide by zero, BX safely returns <code>0</code> to keep your program from crashing!</p>
+<hr>
+<h2 id="chapter-5-making-decisions">CHAPTER 5: MAKING DECISIONS</h2>
+<p>A smart program can make choices! BX does this using <strong>conditions</strong> to compare two values. You can use the following comparison operators:</p>
+<ul>
+<li><code>==</code> (Equal)</li>
+</ul>
+<ul>
+<li><code>!=</code> (Not equal)</li>
+</ul>
+<ul>
+<li><code>&gt;</code> (Greater than)</li>
+</ul>
+<ul>
+<li><code>&lt;</code> (Less than)</li>
+</ul>
+<ul>
+<li><code>&gt;=</code> (Greater than or equal)</li>
+</ul>
+<ul>
+<li><code>&lt;=</code> (Less than or equal)</li>
+</ul>
+<p>BX is very flexible. You can put the operator right in the middle, like <code>\(score|==|100</code>, or you can put it at the very end, like <code>\)score|100|==</code>. Both mean the exact same thing!</p>
+<h3 id="the-test-command">The TEST Command</h3>
+<p><code>test</code> evaluates a condition and stores one of two values depending on if it is true or false.</p>
+<pre><code class="language-bx">test result|10|&gt;|5|YES|NO
+say $result
+</code></pre>
+<p>Because 10 is greater than 5, the <code>$result</code> box will contain <code>YES</code>. If you leave off the true/false values, <code>test</code> uses <code>1</code> for true and <code>0</code> for false.</p>
+<h3 id="the-if-command">The IF Command</h3>
+<p>If you want to execute an entire command <em>only</em> when a condition is true, use <code>if</code>.</p>
+<pre><code class="language-bx">box score|100
+if $score|&gt;|50|say|You passed!
+</code></pre>
+<p>This checks if the score is greater than 50. Because it is, it executes the nested command <code>say You passed!</code>.</p>
+<p>The nested command can be <em>anything</em>, including <code>jump</code> or <code>mark</code>. That is how the built-in <code>os/os.bx</code> does its login gate in a single line:</p>
+<pre><code class="language-bx">if $loggedin|==|2|jump|loggedin|m
+</code></pre>
+<p>If the condition is false, <code>if</code> does nothing at all and the program moves on to the next line.</p>
+<hr>
+<h2 id="chapter-6-jumping-around">CHAPTER 6: JUMPING AROUND!</h2>
+<p>Programs don't just have to run straight down from top to bottom. You can jump around!</p>
+<h3 id="planting-flags-premark-and-mark">Planting Flags: premark and mark</h3>
+<p>A mark gives a name to a location in your program, like planting a flag. BX has <strong>two</strong> ways to plant one, and the difference is <em>when</em> they happen.</p>
+<p><strong><code>premark NAME</code> is a pre-run mark.</strong> Before a single line of your BX code executes, <code>bx</code> reads your whole program and collects every <code>premark</code> into the marks list. That means every <code>premark</code> in the file already exists on line one, so you are free to jump forward to a <code>premark</code> that appears further down your program.</p>
+<pre><code class="language-bx">premark loop
+</code></pre>
+<p><strong><code>mark NAME</code> is a runtime mark.</strong> <code>mark</code> is an ordinary command. It only adds <code>NAME</code> to the marks list when execution actually reaches that line, and the name it adds can be built out of boxes at that moment.</p>
+<pre><code class="language-bx">box i|1
+mark retry-$i
+</code></pre>
+<p>Compare the two:</p>
+<p>| | <code>premark NAME</code> | <code>mark NAME</code> | | --- | --- | --- | | When it runs | Before any BX code runs, while the program loads | When your program reaches the line | | Name | Literal text, taken from the source | Resolved first, so <code>$boxes</code> and <code>\)boxes</code> work | | Jumping to it before it exists | Always fine | Not found, the jump is ignored and the program carries on | | Good for | Fixed labels known ahead of time | Labels created later, or built from user input |</p>
+<p>Both kinds end up in the <em>same</em> marks list, so <code>jump NAME|m</code> and <code>jumpif ... NAME|m</code> treat them identically. There is no extra syntax to remember. A <code>mark</code> that runs a second time simply re-points its name to the new spot, so a mark inside a loop never fills the list up with duplicates.</p>
+<p>A <code>premark</code> points at its own line (jumping to it just falls through to the next line), while a <code>mark</code> points at the line <em>after</em> it, which is usually what you want when a loop jumps back.</p>
+<h3 id="jump-and-jumpif">JUMP and JUMPIF</h3>
+<p>The <code>jump</code> command changes the current program position.</p>
+<ul>
+<li>To jump to a specific line number, just use the number: <code>jump 22</code>. Line numbers are physical lines counted from 1, including blank and comment lines.</li>
+</ul>
+<ul>
+<li>To jump to a mark you planted, you <strong>must</strong> add <code>|m</code> to the end so BX knows you are looking for a mark name, not a line number: <code>jump loop|m</code>. If the name is not in the marks list, or the line number is out of range, the jump is ignored and execution moves on to the next line.</li>
+</ul>
+<p>You can combine jumps with conditions using <code>jumpif</code>! This is how you build amazing things like loops and game menus.</p>
+<pre><code class="language-bx">box i|0
+
+premark loop
+
+say $i
+math i|$i|1|+
+jumpif $i|&lt;|10|loop|m
+
+say Finished.
+end
+</code></pre>
+<p>This creates a counting loop! It prints the number, adds 1 to it, and jumps back to the <code>loop</code> mark as long as <code>$i</code> is less than 10.</p>
+<h3 id="loops-built-with-mark">Loops built with mark</h3>
+<p>Because <code>mark</code> waits to be reached, it can sit inside a loop and plant a new mark on every pass. Here <code>retry</code> only becomes a real destination the first time line 5 runs, and jumping back to it lands on <code>say attempt</code>, never on the <code>mark</code> line itself.</p>
+<pre><code class="language-bx">box tries|0
+
+premark start
+
+mark retry
+say attempt $tries
+math tries|$tries|1|+
+ask try again ?
+if $?|==|y|jump|retry|m
+
+say gave up after $tries attempts
+end
+</code></pre>
+<p>Feed it <code>y</code>, <code>y</code>, <code>n</code> and you get:</p>
+<pre><code class="language-text">attempt 0
+try again attempt 1
+try again attempt 2
+try again gave up after 3 attempts
+</code></pre>
+<h3 id="mark-names-can-be-built-at-runtime">Mark names can be built at runtime</h3>
+<p>Since <code>mark</code> resolves its name like any other value, the same loop can plant a <em>different</em> mark on every pass. This is the runtime counterpart of the <code>premark app-calc</code> style dispatch in <code>os/os.bx</code>, except the names here are generated instead of written out by hand.</p>
+<pre><code class="language-bx">box id|0
+
+premark build
+
+mark try-$id
+say trying $id
+math id|$id|1|+
+jumpif $id|&lt;|2|build|m
+
+say build finished
+ask which try try-1
+jump $try-1|m
+end
+</code></pre>
+<p>The build loop plants <code>try-0</code> and <code>try-1</code> on its way past. Then <code>ask which try try-1</code> prints its prompt and drops whatever the user types into the box <code>try-1</code>, and <code>jump $try-1|m</code> uses that box as the mark name. Jumping to <code>try-1</code> lands right after <code>mark try-1</code>, which is <code>say trying $id</code>.</p>
+<hr>
+<h2 id="chapter-7-advanced-tricks-for-power-users">CHAPTER 7: ADVANCED TRICKS FOR POWER USERS</h2>
+<ul>
+<li><strong>Deleting Boxes:</strong> Keep your computer's memory tidy! Use <code>del NAME</code> to completely erase a box you no longer need. Asking for a box that was never created, or that you deleted, gives you an empty string instead of an error.</li>
+</ul>
+<ul>
+<li><strong>Clearing the Screen:</strong> Use the <code>clear</code> (or <code>cls</code>) command to wipe your terminal screen completely clean, giving you a fresh canvas.</li>
+</ul>
+<ul>
+<li><strong>Double Indirection:</strong> If you have a box that contains the <em>name</em> of another box, you can use two dollar signs <code>$$</code> to get the final value! For example, if <code>$name</code> holds <code>message</code>, and <code>$message</code> holds <code>Hello</code>, typing <code>say $$name</code> will output <code>Hello</code>.</li>
+</ul>
+<ul>
+<li><strong>The Colon Rule:</strong> BX keeps your colons. A <code>:</code> inside a value is printed exactly as you typed it, so <code>box t|a: b</code> really does hold <code>a: b</code>. The one exception is a colon placed directly in front of a <code>$</code> box, which is dropped so you can glue names together: <code>box-:$name</code> becomes <code>box-bob</code> when <code>$name</code> is <code>bob</code>. If you want a colon to survive right in front of a box, escape it as <code>\/:</code>, exactly as you would escape it anywhere else.</li>
+</ul>
+<ul>
+<li><strong>Explicit References:</strong> <code>\(</code> and <code>\)</code> both mean "read the box that follows", which is the explicit spelling of <code>$name</code>. A value of <code>Hello \)name</code> stores <code>Hello BX</code> when <code>$name</code> is <code>BX</code>. Reach for it when you want the reference to read clearly inside a longer piece of text.</li>
+</ul>
+<ul>
+<li><strong>Watch What Counts as a Name:</strong> A box name is a run of letters, digits, <code>_</code>, <code>-</code>, <code>?</code>, and <code>#</code>, and <code>$</code> grabs that whole run. So <code>say $a-b</code> asks for the box named <code>a-b</code>, not the value of <code>a</code> followed by a minus sign. Any character outside that set ends the name, which is why <code>say $a -b</code> prints the value of <code>a</code> and then <code> -b</code>.</li>
+</ul>
+<ul>
+<li><strong>Dynamic Box Names:</strong> You can name a box using the contents of <em>another</em> box! <code>box note-$name|$text</code> creates a box called <code>note-bob</code> if <code>$name</code> is <code>bob</code>. The built-in <code>os/os.bx</code> leans on this hard with things like <code>box file-:$name</code> and <code>box note-:$name</code>, which is how its file and note apps store a different box per user entry.</li>
+</ul>
+<ul>
+<li><strong>Boxes as Jump Tables:</strong> Because a box can hold a mark name, <code>ask which app</code> + <code>jump $which|m</code> turns user input straight into a jump. That is the whole trick behind the <code>app-$app</code> dispatch in <code>os/os.bx</code>.</li>
+</ul>
+<h3 id="short-commands-reference">Short Commands Reference</h3>
+<p>Tired of typing long words? BX has built-in abbreviations!</p>
+<ul>
+<li><code>box</code> = <code>b</code></li>
+</ul>
+<ul>
+<li><code>say</code> = <code>s</code></li>
+</ul>
+<ul>
+<li><code>ask</code> = <code>a</code></li>
+</ul>
+<ul>
+<li><code>math</code> = <code>m</code></li>
+</ul>
+<ul>
+<li><code>test</code> = <code>t</code></li>
+</ul>
+<ul>
+<li><code>if</code> = <code>i</code></li>
+</ul>
+<ul>
+<li><code>jump</code> = <code>j</code></li>
+</ul>
+<ul>
+<li><code>jumpif</code> = <code>ji</code></li>
+</ul>
+<ul>
+<li><code>del</code> = <code>d</code></li>
+</ul>
+<ul>
+<li><code>premark</code> = <code>pm</code></li>
+</ul>
+<ul>
+<li><code>mark</code> = <code>mk</code></li>
+</ul>
+<ul>
+<li><code>end</code> = <code>e</code></li>
+</ul>
+<ul>
+<li><code>clear</code> = <code>cls</code></li>
+</ul>
+<h3 id="runtime-facilities-packages-environments-and-libraries">Runtime facilities: packages, environments, and libraries</h3>
+<p>Beyond the core commands, BX ships three runtime facility groups. They follow the same rules as everything else: <code>|</code> separates arguments, boxes hold values, and the command token can stop at either a space <em>or</em> a <code>|</code>, so <code>low.arch|boxname</code> and <code>low.arch boxname</code> both work.</p>
+<ul>
+<li><strong><code>umload</code> — the package manager.</strong> <code>umload require|NAME|mark</code> runs <code>NAME</code> as a module and jumps back to the mark when it ends. The module sees a copy of your boxes and writes its results back, so the usual idiom is to set input boxes, require the package, then read the output box. Packages are installed from a url, the registry, or <code>./packages/NAME.bx</code>, and cached in <code>$BOXEDLANG_CACHE</code>, <code>~/.cache/boxedlang</code>, or <code>./.boxcache</code>.</li>
+</ul>
+<pre><code class="language-text">  umload require|NAME|mark     install if needed, resolve deps, run the package
+  umload install|NAME|URL      install into the cache
+  umload remove|NAME           delete a cached package
+  umload list                  loaded and cached packages
+  umload info|NAME             metadata for one package
+  umload deps|NAME             dependency tree
+  umload verify|NAME           install dependencies without running
+  umload search|QUERY          search the registry
+  umload cache|dir             print the cache directory
+  umload cache|clear           empty the cache
+  umload publish|NAME|VERSION  copy into ./boxpkg, update the registry, push</code></pre>
+<p>A package is an ordinary BX file whose metadata lives in leading <code>//</code> comments:</p>
+<pre><code class="language-text">  // name: mypack
+  // version: 1.0.0
+  // author: you
+  // description: what it does
+  // deps: otherpack, thirdpack</code></pre>
+<p>Dependencies are installed automatically and cycles are reported rather than looped. <code>require</code> marks the package as loaded in a <code>pkg_NAME</code> box. The registry is <code>$BOXEDLANG_REGISTRY</code>, <code>./boxpkg/registry.txt</code>, <code>./packages/registry.txt</code>, <code>./registry.txt</code>, or one installed next to the <code>bx</code> binary; each line is <code>name|raw url|version|description|author</code>. See <code>boxpkg/README.md</code> for the package format.</p>
+<ul>
+<li><strong><code>bxe</code> — the environment manager.</strong> Env objects keep their own private boxes and a command counter while a running program executes other work, then hand the result back. Actions: <code>list</code>, <code>create|name</code>, <code>run|name|cmd...</code>, <code>all|cmd...</code> (run the same command in every env), <code>cmds|name</code> (show the command counter), <code>reset|name</code>. A lazy eviction policy keeps at most 16 envs and resets the highest-use env when a program passes 2000 commands inside it.</li>
+</ul>
+<ul>
+<li><strong><code>lib</code>, <code>high.*</code>, and <code>low.*</code> — the library layer.</strong> <code>lib list</code> shows compiled-in vs. active libraries, <code>lib load|NAME</code> turns one on, <code>lib unload|NAME</code> turns one off. The <code>high.*</code> commands are gated on their library being active and refuse with an error otherwise:</li>
+<li><code>high.wifi.init</code>, <code>high.wifi.connect|ssid|pass|sec</code>, <code>high.wifi.status|box</code>, <code>high.wifi.info</code>, <code>high.wifi.env|box</code>, <code>high.wifi.disconnect</code>. On the native environment connect simulates a successful association (<code>ip=192.168.1.100</code>).</li>
+<li><code>low.*</code> is always available: <code>low.arch</code>, <code>low.env</code>, <code>low.tick|box</code> (monotonic nanoseconds), <code>low.pid|box</code>.</li>
+</ul>
+<h3 id="the-gfx-library">The GFX library</h3>
+<p><code>lib load|gfx</code> turns on a themed UI element tree. Elements are identified by a <code>uint32</code> id; pass <code>0</code> as the id to have one assigned, and the box you name is set to the real id. Note that the subcommand is part of the command token, so it is spelled <code>high.gfx.new</code>, not <code>high.gfx new</code>.</p>
+<pre><code class="language-text">high.gfx.types                                  element type names
+high.gfx.color|BOX|#rgb                         parse a color to an integer
+high.gfx.colorhex|BOX|INTEGER                   format an integer back to #rrggbb
+high.gfx.theme|BOX|[c#fff.h#000.r$4.t%100.x#000.b#eee]   parse a theme
+high.gfx.new|ID|PARENT|TYPE|X|Y [W|H|THEME|BOX|TEXT]     create an element
+high.gfx.set|ID|FIELD|VALUE                     field: x y w h text theme box
+high.gfx.get|ID [FIELD] [BOX]                   read an element back
+high.gfx.count [BOX]                            number of elements
+high.gfx.list                                   print every element
+high.gfx.clear                                  drop every element</code></pre>
+<p><code>TYPE</code> is one of <code>button</code>, <code>text</code>, <code>slider</code>, <code>box</code>, <code>textbox</code>, <code>label</code>, <code>image</code>, <code>panel</code>.</p>
+<p>A theme string is a bracketed list of exactly six tags, <strong>in this order</strong>: <code>c</code> primary, <code>h</code> highlight, <code>r</code> rounding, <code>t</code> transparency, <code>x</code> text, <code>b</code> background. Colors are <code>#rgb</code>, <code>#rgba</code>, <code>#rrggbb</code> or <code>#rrggbbaa</code>. Rounding is <code>$50</code> for a percentage or <code>8</code> for pixels. Transparency is <code>0</code>–<code>100</code>. Anything else is a parse error, and <code>high.gfx.theme</code> leaves the box empty.</p>
+<p>Every successfully parsed theme is pushed onto a four-deep history. A theme of <code>^^</code> carets inherits from the most recently pushed theme, <code>^^^</code> from the one before that, and so on up to <code>^^^^^</code>. Asking for more history than exists is a parse error, and inheriting does not itself push a new entry.</p>
+<pre><code class="language-text">lib load|gfx
+high.gfx.theme|c|[c#f00.h#0f0.r$8.t%50.x#00f.b#111]
+high.gfx.theme|same|[c#00f.h#0f0.r$8.t%50.x#00f.b#111]
+high.gfx.theme|inherit|^^^^^</code></pre>
+<pre><code class="language-text">lib load|gfx
+high.gfx.new|1|0|button|10|20|100|30|[c#f00.h#0f0.r$4.t%90.x#00f.b#eee]|btn|OK
+high.gfx.set|1|text|Cancel
+high.gfx.get|1|text|out
+say $out</code></pre>
+<hr>
+<h2 id="chapter-8-driving-bx-from-your-shell">CHAPTER 8: DRIVING BX FROM YOUR SHELL</h2>
+<p>Everything above is the language. The <code>bx</code> program itself is the tool that runs, transpiles, and compiles it.</p>
+<pre><code class="language-text">usage: bx run FILE | bx transpile FILE -o OUT.c | bx emit-c FILE | bx compile FILE -o OUT [--target T] | bx asm FILE -o OUT.s [--target T] | bx raw FILE -o OUT.bin [--target T] | bx targets | bx version | add -t/--time for timing, options may appear anywhere
+</code></pre>
+<h3 id="the-commands">The commands</h3>
+<ul>
+<li><strong><code>bx run FILE</code></strong> interprets <code>FILE</code> and prints the output of your program right now. Nothing is written to disk.</li>
+</ul>
+<ul>
+<li><strong><code>bx transpile FILE -o OUT.c</code></strong> writes a self-contained C program to <code>OUT.c</code>. The BX source is embedded inside the C file along with the runtime, so compiling <code>OUT.c</code> later gives you a program that behaves exactly like <code>bx run</code> did.</li>
+</ul>
+<ul>
+<li><strong><code>bx emit-c FILE</code></strong> is <code>transpile</code> without the file: it prints the generated C to your terminal so you can pipe it somewhere.</li>
+</ul>
+<ul>
+<li><strong><code>bx compile FILE -o OUT</code></strong> builds a native executable for your machine.</li>
+</ul>
+<ul>
+<li><strong><code>bx asm FILE -o OUT.s</code></strong> stops one step earlier and writes assembly instead of a binary.</li>
+</ul>
+<ul>
+<li><strong><code>bx raw FILE -o OUT.bin</code></strong> goes all the way to a flat binary with no ELF wrapper, ready to be loaded by a bootloader or written into a disk image.</li>
+</ul>
+<ul>
+<li><strong><code>bx targets</code></strong> lists every known compile target with the compiler it uses.</li>
+</ul>
+<ul>
+<li><strong><code>bx version</code></strong> prints the version of <code>bx</code> and compares it with the <code>VERSION</code> file in the project, so you can tell at a glance whether you are up to date.</li>
+</ul>
+<h3 id="the-flags">The flags</h3>
+<ul>
+<li><strong><code>-o OUT</code></strong> names the output file. It is required by <code>transpile</code>, <code>compile</code>, <code>asm</code>, and <code>raw</code>.</li>
+</ul>
+<ul>
+<li><strong><code>--target NAME</code></strong> picks the compiler and flags for <code>compile</code>, <code>asm</code>, and <code>raw</code>. Without it you get <code>native</code>.</li>
+</ul>
+<ul>
+<li><strong><code>--keep-c</code></strong> leaves the intermediate generated C file in <code>/tmp</code> instead of deleting it, which is handy when you want to see exactly what your BX turned into.</li>
+</ul>
+<ul>
+<li><strong><code>-t</code> / <code>--time</code></strong> prints how long a run or compile took to standard error as <code>bx: MODE FILE took X.XXXXXX s</code>. Options can appear anywhere on the command line, before or after the mode and file, so <code>./bx -t run file.bx</code> and <code>./bx --time compile file.bx -o out</code> both work.</li>
+</ul>
+<ul>
+<li><strong><code>--keep-comments</code>, <code>-D NAME</code>, <code>-U NAME</code></strong> are accepted so scripts and build files have a stable command line, but the transpiler does not act on them yet.</li>
+</ul>
+<h3 id="a-taste-of-the-target-list">A taste of the target list</h3>
+<p><code>bx targets</code> lists the compilers and cross compilers that <code>compile</code>, <code>asm</code>, and <code>raw</code> know how to drive. Every one of them produces a normal userspace program for a host CPU:</p>
+<ul>
+<li><strong><code>native</code></strong>, which is just <code>cc</code> for the machine you are on.</li>
+</ul>
+<ul>
+<li><strong>Cross compilers</strong>, where you get a userspace program for another CPU: <code>x86_64</code>, <code>i386</code>, <code>i686</code>, <code>aarch64</code>, <code>armv7</code>, <code>arm</code>, <code>riscv64</code>, <code>riscv32</code>, <code>mips</code>, <code>mipsel</code>, <code>mips64</code>, <code>powerpc</code>, <code>ppc64</code>, <code>ppc64le</code>, <code>s390x</code>, <code>sparc64</code>, and <code>loongarch64</code>. These need the matching cross compiler installed, which is what <code>setup.sh --cross</code> tries to arrange for you.</li>
+</ul>
+<p>There are currently no freestanding, Multiboot, or UEFI compile targets. The kernel under <code>src/</code> is a hand-written ELF32 Multiboot1 image built by <code>make kernel</code> and linked with <code>src/kernel.ld</code>; it is not produced by <code>bx compile</code>. Adding those target families would mean teaching the transpiler to emit freestanding code and giving the runtime its own box storage, since the current runtime leans on the C standard library.</p>
+<h3 id="if-you-would-rather-use-make">If you would rather use make</h3>
+<p>The project ships a <code>Makefile</code> that wraps all of this:</p>
+<pre><code class="language-text">make            # build ./bx
+make smoke      # run, transpile, compile, asm, and raw a small test program
+make features   # string and file builtin tests
+make gfx-tests  # gfx library tests
+make packagetests  # package manager tests, using an isolated cache
+make run-example            # run examples/hello.bx
+make compile-example        # compile it with $(TARGET), default native
+make targets                # list compile targets
+make os                    # compile os/os.bx into .build/boxed-os
+make run-os                # build and run boxed-os
+make kernel                # build .build/kernel.elf, the Multiboot1 kernel
+make verify-kernel         # boot that kernel under QEMU and check for BOXEDLANG-OK
+make install               # install to /usr/local/bin, PREFIX= overrides it
+make clean
+</code></pre>
+<p><code>setup.sh</code> is the one-shot helper around all of it. Run <code>./setup.sh</code> to build and smoke test, <code>./setup.sh --install</code> to install system wide, <code>./setup.sh --user</code> to install into <code>~/.local/bin</code>, and <code>./setup.sh --cross</code> to also try installing cross compilers.</p>
+<hr>
+<h2 id="chapter-9-implementations-and-compile-targets">CHAPTER 9: IMPLEMENTATIONS AND COMPILE TARGETS</h2>
+<p>BX is a language specification first. A BX program should mean the same thing no matter whether it is run by an interpreter, transpiled into another language, assembled, or compiled straight into a raw binary.</p>
+<p>The reference implementation is written in C. In that form, the C program is responsible for reading BX source, parsing each command, managing boxes, resolving <code>$name</code> style substitutions, keeping the marks list, and executing control flow such as <code>jump</code>, <code>jumpif</code>, and <code>end</code>. Note the order of operations it must respect: the marks list is seeded with every <code>premark</code> while the program loads, and only then does execution begin, which is the whole reason <code>premark</code> can be jumped to before its line runs.</p>
+<p>BX can also be transpiled or compiled to lower-level targets:</p>
+<ul>
+<li><strong>C output:</strong> BX commands become C code. Boxes can be represented as a runtime map from names to string values, with helper functions for substitution, math, comparisons, input, output, and jumps.</li>
+</ul>
+<ul>
+<li><strong>Assembly output:</strong> BX commands become assembly instructions plus a small runtime model for string storage, box lookup, printing, input, integer math, and branch labels.</li>
+</ul>
+<ul>
+<li><strong>Raw binary output:</strong> BX can be compiled all the way into an executable binary for a chosen platform. This target must define the exact binary format, calling convention, system calls or runtime services, memory layout, and entry point.</li>
+</ul>
+<p>A transpiler does not have to copy the interpreter internally. It only has to preserve the observable behavior of the BX program: printed output, accepted input, box values, math results, jumps, program termination, and error handling.</p>
+<h3 id="required-target-behavior">Required target behavior</h3>
+<p>Every target should preserve these rules:</p>
+<ul>
+<li>Commands are parsed case-insensitively unless a future extension says otherwise.</li>
+<li><code>|</code> separates command arguments.</li>
+<li><code>//</code> begins a comment outside literal text.</li>
+<li>Unknown commands are skipped instead of raising an error.</li>
+<li>Boxes store values by name, and a name may contain letters, digits, <code>_</code>, <code>-</code>, <code>?</code>, and <code>#</code>.</li>
+<li><code>$name</code> resolves to the current value of a box, <code>$$name</code> to the value of the box that <code>name</code> points at.</li>
+<li>Reassigning a box replaces the old value.</li>
+<li>Integer math uses BX behavior, including returning <code>0</code> for division by zero.</li>
+<li><code>premark NAME</code> enters the marks list before any BX code runs, so forward jumps to a <code>premark</code> always work.</li>
+<li><code>mark NAME</code> enters the marks list when execution reaches it, points at the line after the <code>mark</code>, and re-points its name if it runs again.</li>
+<li>A jump to a name that is not in the marks list, or to a line number out of range, is ignored and execution continues on the next line.</li>
+<li><code>jump NAME|m</code> jumps to a mark, while <code>jump NUMBER</code> jumps to a 1-based physical line number.</li>
+<li><code>end</code> terminates the program.</li>
+</ul>
+<p>Targets may use different internal representations, but they should not change what a valid BX program does.</p>
+<h3 id="libraries">Libraries</h3>
+<p>Three C libraries live in <code>src/</code>. The wifi and gfx ones are now reachable from BX programs through the <code>lib</code> / <code>high.*</code> / <code>low.*</code> commands described in Chapter 7, exactly as chapter 3 describes: the same boxes, the same marks, the same jump rules.</p>
+<ul>
+<li><code>src/bx_gfx.c</code> and <code>src/bx_gfx.h</code> implement the themed UI element tree behind the <code>high.gfx.*</code> family described in Chapter 7: colors in <code>#rgb</code>, <code>#rgba</code>, <code>#rrggbb</code>, <code>#rrggbbaa</code> form, themes of exactly six ordered tags with <code>^^</code> caret inheritance, element creation and lookup by id, and theme push/pop history. <code>make gfx-tests</code> covers it.</li>
+<li><code>src/bx_wifi.c</code> and <code>src/bx_wifi.h</code> cover scanning, connecting, and status, with separate paths for native, web/WASM, and bare-metal environments. <code>lib load|wifi</code> switches on the <code>high.wifi.*</code> family; <code>low.env</code> reports which environment the runtime detected.</li>
+</ul>
+<h3 id="performance">Performance</h3>
+<p>Measured on this machine (<code>-O3 -march=native</code>, output to <code>/dev/null</code>). The interpreter pre-parses the program once at load into per-line op records, resolves <code>$name</code> without allocating in the hot case, stores short box values inline, caches the numeric value of numeric boxes, and only flushes stdout on a real terminal.</p>
+<ul>
+<li><strong>1,000,000-iteration counter loop</strong> (<code>math</code> + <code>jumpif</code>): 1.18 s before optimisation, 0.30 s after ≈ <strong>0.15 µs per command</strong>. Moving the rest of the way to 0.05 µs/command would require compiling the loop (JIT) rather than interpreting it.</li>
+<li><strong>FizzBuzz to 9,999</strong>: 0.043 s before, 0.010 s after.</li>
+<li><strong>Per-command 10,000-iteration loops</strong> (<code>stress.sh</code>): <code>box</code> 13→4 ms, <code>math</code> 17→6 ms, <code>test</code> 18→4 ms, <code>jumpif</code> 22→4 ms, <code>jump</code> 15→3 ms, <code>del</code> 16→4 ms.</li>
+</ul>
+<p>Run <code>./stress.sh</code> to reproduce these numbers on your own machine.</p>
+<p>You are now equipped with everything you need to become a BoxedLANG master.</p>
+</main>
+<footer>
+    BoxedLANG v0.2.0 &middot; <a href="https://github.com/mc20000-01/boxed">source</a> &middot;
+    <a href="https://github.com/mc20000-01/BoxPkg">BoxPkg registry</a>
+</footer>
+</body>
+</html>
