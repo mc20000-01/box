@@ -2163,6 +2163,140 @@ static const Target *find_target(const char *name) {
     for (int i = 0; targets[i].name; i++) if (!strcmp(targets[i].name, name)) return &targets[i];
     return NULL;
 }
+
+static void shell_quote(char *out, size_t cap, const char *s);
+
+/* ---------------------------------------------------------------- rulesets
+
+ * A ruleset is a ruleset.md file of `// key: value` lines, the same shape the
+ * package metadata already uses. It lets someone describe a build the runner
+ * has never heard of - a microcontroller, a retro console, a board with a
+ * custom linker script - without patching the C source.
+ *
+ * Search order: $BOXEDLANG_RULESETS, ./rulesets, then ./.
+ */
+static int ruleset_path(const char *name, char *out, size_t cap) {
+    if (!name || !*name || strchr(name, '/') || strstr(name, "..")) return -1;
+    const char *dirs[3];
+    char env[512];
+    int nd = 0;
+    const char *e = getenv("BOXEDLANG_RULESETS");
+    if (e && *e) { snprintf(env, sizeof env, "%s", e); dirs[nd++] = env; }
+    dirs[nd++] = "./rulesets";
+    dirs[nd++] = ".";
+    for (int i = 0; i < nd; i++) {
+        snprintf(out, cap, "%s/%s.md", dirs[i], name);
+        if (access(out, R_OK) == 0) return 0;
+    }
+    return -1;
+}
+
+/* Reads one field out of a ruleset. Callers own the returned string. */
+static char *ruleset_field(const char *path, const char *key) {
+    char buf[512];
+    char *val = NULL;
+    if (umload_pkg_meta(path, key, buf, sizeof buf) == 0) val = xstrdup(buf);
+    return val;
+}
+
+static void list_rulesets(void) {
+    printf("ruleset commands:\n");
+    printf("  rulesets              list ruleset.md files found\n");
+    printf("  ruleset|name          show the fields of one ruleset\n");
+    printf("  compile ... --ruleset NAME   build with that ruleset\n");
+    printf("search order: $BOXEDLANG_RULESETS, ./rulesets, ./\n");
+    fflush(stdout);
+}
+
+static int ruleset_scan_dir(const char *dir, const char *label) {
+    int found = 0;
+    DIR *d = opendir(dir);
+    if (!d) return 0;
+    struct dirent *ent;
+    while ((ent = readdir(d))) {
+        size_t l = strlen(ent->d_name);
+        if (l < 4 || strcmp(ent->d_name + l - 3, ".md")) continue;
+        char path[768];
+        snprintf(path, sizeof path, "%s/%s", dir, ent->d_name);
+        char nm[256] = "", ds[256] = "", vr[64] = "";
+        umload_pkg_meta(path, "name", nm, sizeof nm);
+        umload_pkg_meta(path, "description", ds, sizeof ds);
+        umload_pkg_meta(path, "version", vr, sizeof vr);
+        if (!*nm) { size_t k = l - 3; if (k < sizeof nm) { memcpy(nm, ent->d_name, k); nm[k] = 0; } }
+        printf("  %-18s v%-8s %s\n", *nm ? nm : ent->d_name, *vr ? vr : "?", *ds ? ds : "(no description)");
+        found++;
+    }
+    closedir(d);
+    (void)label;
+    return found;
+}
+
+static void list_all_rulesets(void) {
+    printf("rulesets:\n");
+    int n = ruleset_scan_dir("./rulesets", "local");
+    char env[512];
+    const char *e = getenv("BOXEDLANG_RULESETS");
+    if (e && *e) { snprintf(env, sizeof env, "%s", e); n += ruleset_scan_dir(env, "env"); }
+    if (!n) printf("  (none found - drop a ruleset.md in ./rulesets)\n");
+    fflush(stdout);
+}
+
+static void show_ruleset(const char *name) {
+    char path[768];
+    if (ruleset_path(name, path, sizeof path) != 0) {
+        fprintf(stderr, "ruleset: no ruleset.md for '%s'\n", name);
+        return;
+    }
+    char buf[512];
+    printf("ruleset %s (%s)\n", name, path);
+    static const char *keys[] = {"name","version","author","description","cc","cflags","ld","ldflags","objcopy","cpu","suffix",NULL};
+    for (int i = 0; keys[i]; i++)
+        if (umload_pkg_meta(path, keys[i], buf, sizeof buf) == 0) printf("  %-12s %s\n", keys[i], buf);
+    fflush(stdout);
+}
+
+/* Builds one shell command line for a ruleset, honouring an explicit linker
+ * step when the ruleset names `ld` instead of letting the compiler drive it. */
+static int ruleset_command(const char *path, const char *mode, const char *out,
+                           char *cmd, size_t cap) {
+    char *cc = ruleset_field(path, "cc");
+    char *cflags = ruleset_field(path, "cflags");
+    char *ld = ruleset_field(path, "ld");
+    char *ldflags = ruleset_field(path, "ldflags");
+    char *objcopy = ruleset_field(path, "objcopy");
+    if (!cc) { fprintf(stderr, "ruleset: no cc: field in %s\n", path); free(cflags); free(ld); free(ldflags); free(objcopy); return -1; }
+    if (!cflags) cflags = xstrdup("");
+    if (!strstr(cflags, "-std=")) {
+        char *with = calloc(strlen(cflags) + 16, 1);
+        if (with) { strcpy(with, "-std=c99 "); strcat(with, cflags); free(cflags); cflags = with; }
+    }
+    char qcc[256], qout[512], tmp_obj[256], qtmp_obj[512];
+    shell_quote(qcc, sizeof qcc, cc);
+    shell_quote(qout, sizeof qout, out);
+    snprintf(tmp_obj, sizeof tmp_obj, "/tmp/bx_rs_%ld.o", (long)getpid());
+
+    if (!strcmp(mode, "asm")) {
+        snprintf(cmd, cap, "%s %s -S -o %s %s", qcc, cflags, qout, "$BXIN$");
+    } else if (!strcmp(mode, "compile") && ld) {
+        shell_quote(qtmp_obj, sizeof qtmp_obj, tmp_obj);
+        char qld[256];
+        shell_quote(qld, sizeof qld, ld);
+        snprintf(cmd, cap,
+                 "%s %s -c -o %s %s && %s %s -o %s %s",
+                 qcc, cflags, qtmp_obj, "$BXIN$", qld, ldflags ? ldflags : "", qout, qtmp_obj);
+    } else if (!strcmp(mode, "compile")) {
+        snprintf(cmd, cap, "%s %s %s -o %s %s", qcc, cflags, ldflags ? ldflags : "", qout, "$BXIN$");
+    } else if (!strcmp(mode, "raw")) {
+        shell_quote(qtmp_obj, sizeof qtmp_obj, tmp_obj);
+        char qoc[256];
+        shell_quote(qoc, sizeof qoc, objcopy ? objcopy : "objcopy");
+        snprintf(cmd, cap, "%s %s -c -o %s %s && %s -O binary %s %s",
+                 qcc, cflags, qtmp_obj, "$BXIN$", qoc, qtmp_obj, qout);
+    } else { fprintf(stderr, "ruleset: mode '%s' is not buildable\n", mode); return -1; }
+
+    free(cc); free(cflags); free(ld); free(ldflags); free(objcopy);
+    return 0;
+}
 static void list_targets(void) {
     puts("known targets:");
     for (int i = 0; targets[i].name; i++) printf("  %-12s %-34s %s\n", targets[i].name, targets[i].cc, targets[i].cpu);
@@ -2182,15 +2316,42 @@ static int emit_temp_c(const char *src, char *tmp, size_t tmp_cap) {
     return emit_c(src, tmp);
 }
 static int run_backend(const char *src, const char *mode, const char *out, const char *target_name, int keep_c) {
-    const Target *t = find_target(target_name ? target_name : "native");
-    if (!t) { fprintf(stderr, "unknown target: %s\n", target_name); list_targets(); return 2; }
+    /* Try ruleset first. A ruleset is a file like foo.md that describes
+     * build commands (cc, cflags, ld, ldflags, objcopy, cpu). */
+    const Target *t = NULL;
+    char rpath[768];
+    int is_ruleset = 0;
+    if (target_name && ruleset_path(target_name, rpath, sizeof rpath) == 0) {
+        is_ruleset = 1;
+    } else {
+        t = find_target(target_name ? target_name : "native");
+        if (!t) { fprintf(stderr, "unknown target: %s\n", target_name); list_targets(); return 2; }
+    }
     if (!out) { fprintf(stderr, "%s needs -o OUT\n", mode); return 2; }
 
-    char tmp_c[256], qcc[512], qin[512], qout[512], cmd[4096];
+    char tmp_c[256], qin[512], qout[512], cmd[4096];
     int rc = emit_temp_c(src, tmp_c, sizeof tmp_c); if (rc) return rc;
-    shell_quote(qcc, sizeof qcc, t->cc); shell_quote(qin, sizeof qin, tmp_c); shell_quote(qout, sizeof qout, out);
+    char qcc[512];
+    if (!is_ruleset) shell_quote(qcc, sizeof qcc, t->cc);
+    shell_quote(qin, sizeof qin, tmp_c); shell_quote(qout, sizeof qout, out);
 
-    if (!strcmp(mode, "compile")) {
+    if (is_ruleset) {
+        rc = ruleset_command(rpath, mode, out, cmd, sizeof cmd);
+        if (rc == 0) {
+            char *repl = cmd;
+            for (size_t i = 0; i + 5 < strlen(repl); i++) {
+                if (repl[i] == '$' && repl[i+1] == 'B' && repl[i+2] == 'X' && repl[i+3] == 'I' && repl[i+4] == 'N' && repl[i+5] == '$') {
+                    repl[i] = 0;
+                    char tmp[4096];
+                    snprintf(tmp, sizeof tmp, "%s%s%s", repl, qin, repl + i + 6);
+                    snprintf(cmd, sizeof cmd, "%s", tmp);
+                    break;
+                }
+            }
+            rc = system(cmd);
+        }
+        if (rc) fprintf(stderr, "%s ruleset '%s' failed\n", mode, target_name);
+    } else if (!strcmp(mode, "compile")) {
         snprintf(cmd, sizeof cmd, "%s -x c -std=c99 -O2 -o %s %s", qcc, qout, qin);
         rc = system(cmd);
     } else if (!strcmp(mode, "asm")) {
@@ -2205,8 +2366,7 @@ static int run_backend(const char *src, const char *mode, const char *out, const
         if (!rc) { snprintf(cmd, sizeof cmd, "%s -O binary %s %s", qobjcopy, qtmp_obj, qout); rc = system(cmd); }
         remove(tmp_obj);
     } else rc = 2;
-
-    if (rc) fprintf(stderr, "%s backend failed for target '%s' using %s\n", mode, t->name, t->cc);
+    if (rc && !is_ruleset) fprintf(stderr, "%s backend failed for target '%s' using %s\n", mode, t->name, t->cc);
     if (!keep_c) remove(tmp_c);
     return rc;
 }
@@ -2234,11 +2394,14 @@ static void print_version(void) {
 int main(int argc, char **argv) {
     if(argc >= 2 && !strcmp(argv[1], "targets")) { list_targets(); return 0; }
     if(argc >= 2 && !strcmp(argv[1], "version")) { print_version(); return 0; }
+    if(argc >= 2 && !strcmp(argv[1], "rulesets")) { list_all_rulesets(); return 0; }
+    if(argc >= 3 && !strcmp(argv[1], "ruleset")) { show_ruleset(argv[2]); return 0; }
     if(argc < 3){ usage(); return 2; }
     const char *mode=NULL, *in=NULL, *out=NULL, *target="native"; int keep_c=0, timeit=0;
     for(int i=1;i<argc;i++) {
         if(!strcmp(argv[i],"-o")&&i+1<argc) out=argv[++i];
         else if(!strcmp(argv[i],"--target")&&i+1<argc) target=argv[++i];
+        else if(!strcmp(argv[i],"--ruleset")&&i+1<argc) target=argv[++i];
         else if(!strcmp(argv[i],"--keep-c")) keep_c=1;
         else if(!strcmp(argv[i],"-t") || !strcmp(argv[i],"--time")) timeit=1;
         else if(!mode) mode=argv[i];
@@ -2252,8 +2415,10 @@ int main(int argc, char **argv) {
     else if(!strcmp(mode,"emit-c")) rc=emit_c(src,NULL);
     else if(!strcmp(mode,"transpile")) { if(!out){ usage(); rc=2; } else rc=emit_c(src,out); }
     else if(!strcmp(mode,"compile") || !strcmp(mode,"asm") || !strcmp(mode,"raw")) rc=run_backend(src,mode,out,target,keep_c);
-    else { usage(); rc=2; }
-    if(timeit){ clock_gettime(CLOCK_MONOTONIC, &bt1); double sec=(bt1.tv_sec-bt0.tv_sec)+(bt1.tv_nsec-bt0.tv_nsec)/1e9; fprintf(stderr,"bx: %s %s took %.6f s\n", mode, in, sec); }
+    else if(!strcmp(mode,"ruleset") && !in){ show_ruleset("help"); rc=0; }
+    else if(!strcmp(mode,"ruleset")){ show_ruleset(in); rc=0; }
+    else if(!strcmp(mode,"rulesets")){ list_all_rulesets(); rc=0; }
+    else { usage(); rc=2; }    if(timeit){ clock_gettime(CLOCK_MONOTONIC, &bt1); double sec=(bt1.tv_sec-bt0.tv_sec)+(bt1.tv_nsec-bt0.tv_nsec)/1e9; fprintf(stderr,"bx: %s %s took %.6f s\n", mode, in, sec); }
     free(src); return rc;
 }
 #endif
