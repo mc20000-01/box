@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Power User Tricks - BoxedLANG docs</title>
+<meta name="description" content="Power User Tricks">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<nav class="top">
+    <div class="inner">
+        <a class="brand" href="../index.html"><span class="sq">BX</span>BoxedLANG</a>
+                <a class="nav" href="../index.html">Home</a>
+        <a class="nav active" href="../docs/index.html">Docs</a>
+        <a class="nav" href="../packages.html">Packages</a>
+        <a class="nav" href="../install.html">Install</a>
+        <span class="spacer"></span>
+        <a class="nav" href="https://github.com/mc20000-01/boxed" rel="noopener">GitHub</a>
+    </div>
+</nav>
+<main class="wrap">
+<div class="docs"><nav class="side">
+    <p class="side-t">Manual</p>
+    <ul>
+        <li><a class="" href="getting-started.html">Getting Started</a></li>
+        <li><a class="" href="math-and-logic.html">Math and Logic</a></li>
+        <li><a class="" href="flow-control.html">Jumping Around: Flow Control</a></li>
+        <li><a class="on" href="power-users.html">Power User Tricks</a></li>
+        <li><a class="" href="command-line.html">Driving bx From Your Shell</a></li>
+        <li><a class="" href="compiling.html">Implementations and Compile Targets</a></li>
+    </ul>
+    <p class="side-f">
+        <a href="index.html">All chapters</a> &middot; 
+        <a href="https://github.com/mc20000-01/boxed" rel="noopener">source</a>
+    </p>
+</nav>
+<div class="doc">
+<h1 id="power-user-tricks">Power User Tricks</h1>
+<h2 id="chapter-7-advanced-tricks-for-power-users">CHAPTER 7: ADVANCED TRICKS FOR POWER USERS</h2>
+<ul>
+<li><strong>Deleting Boxes:</strong> Keep your computer's memory tidy! Use <code>del NAME</code> to completely erase a box you no longer need. Asking for a box that was never created, or that you deleted, gives you an empty string instead of an error.</li>
+</ul>
+<ul>
+<li><strong>Clearing the Screen:</strong> Use the <code>clear</code> (or <code>cls</code>) command to wipe your terminal screen completely clean, giving you a fresh canvas.</li>
+</ul>
+<ul>
+<li><strong>Double Indirection:</strong> If you have a box that contains the <em>name</em> of another box, you can use two dollar signs <code>$$</code> to get the final value! For example, if <code>$name</code> holds <code>message</code>, and <code>$message</code> holds <code>Hello</code>, typing <code>say $$name</code> will output <code>Hello</code>.</li>
+</ul>
+<ul>
+<li><strong>The Colon Rule:</strong> BX keeps your colons. A <code>:</code> inside a value is printed exactly as you typed it, so <code>box t|a: b</code> really does hold <code>a: b</code>. The one exception is a colon placed directly in front of a <code>$</code> box, which is dropped so you can glue names together: <code>box-:$name</code> becomes <code>box-bob</code> when <code>$name</code> is <code>bob</code>. If you want a colon to survive right in front of a box, escape it as <code>\/:</code>, exactly as you would escape it anywhere else.</li>
+</ul>
+<ul>
+<li><strong>Explicit References:</strong> <code>\(</code> and <code>\)</code> both mean "read the box that follows", which is the explicit spelling of <code>$name</code>. A value of <code>Hello \)name</code> stores <code>Hello BX</code> when <code>$name</code> is <code>BX</code>. Reach for it when you want the reference to read clearly inside a longer piece of text.</li>
+</ul>
+<ul>
+<li><strong>Watch What Counts as a Name:</strong> A box name is a run of letters, digits, <code>_</code>, <code>-</code>, <code>?</code>, and <code>#</code>, and <code>$</code> grabs that whole run. So <code>say $a-b</code> asks for the box named <code>a-b</code>, not the value of <code>a</code> followed by a minus sign. Any character outside that set ends the name, which is why <code>say $a -b</code> prints the value of <code>a</code> and then <code> -b</code>.</li>
+</ul>
+<ul>
+<li><strong>Dynamic Box Names:</strong> You can name a box using the contents of <em>another</em> box! <code>box note-$name|$text</code> creates a box called <code>note-bob</code> if <code>$name</code> is <code>bob</code>. The built-in <code>os/os.bx</code> leans on this hard with things like <code>box file-:$name</code> and <code>box note-:$name</code>, which is how its file and note apps store a different box per user entry.</li>
+</ul>
+<ul>
+<li><strong>Boxes as Jump Tables:</strong> Because a box can hold a mark name, <code>ask which app</code> + <code>jump $which|m</code> turns user input straight into a jump. That is the whole trick behind the <code>app-$app</code> dispatch in <code>os/os.bx</code>.</li>
+</ul>
+<h3 id="short-commands-reference">Short Commands Reference</h3>
+<p>Tired of typing long words? BX has built-in abbreviations!</p>
+<ul>
+<li><code>box</code> = <code>b</code></li>
+</ul>
+<ul>
+<li><code>say</code> = <code>s</code></li>
+</ul>
+<ul>
+<li><code>ask</code> = <code>a</code></li>
+</ul>
+<ul>
+<li><code>math</code> = <code>m</code></li>
+</ul>
+<ul>
+<li><code>test</code> = <code>t</code></li>
+</ul>
+<ul>
+<li><code>if</code> = <code>i</code></li>
+</ul>
+<ul>
+<li><code>jump</code> = <code>j</code></li>
+</ul>
+<ul>
+<li><code>jumpif</code> = <code>ji</code></li>
+</ul>
+<ul>
+<li><code>del</code> = <code>d</code></li>
+</ul>
+<ul>
+<li><code>premark</code> = <code>pm</code></li>
+</ul>
+<ul>
+<li><code>mark</code> = <code>mk</code></li>
+</ul>
+<ul>
+<li><code>end</code> = <code>e</code></li>
+</ul>
+<ul>
+<li><code>clear</code> = <code>cls</code></li>
+</ul>
+<h3 id="runtime-facilities-packages-environments-and-libraries">Runtime facilities: packages, environments, and libraries</h3>
+<p>Beyond the core commands, BX ships three runtime facility groups. They follow the same rules as everything else: <code>|</code> separates arguments, boxes hold values, and the command token can stop at either a space <em>or</em> a <code>|</code>, so <code>low.arch|boxname</code> and <code>low.arch boxname</code> both work.</p>
+<ul>
+<li><strong><code>umload</code> — the package manager.</strong> <code>umload require|NAME|mark</code> runs <code>NAME</code> as a module and jumps back to the mark when it ends. The module sees a copy of your boxes and writes its results back, so the usual idiom is to set input boxes, require the package, then read the output box. Packages are installed from a url, the registry, or <code>./packages/NAME.bx</code>, and cached in <code>$BOXEDLANG_CACHE</code>, <code>~/.cache/boxedlang</code>, or <code>./.boxcache</code>.</li>
+</ul>
+<pre><code class="language-text">  umload require|NAME|mark     install if needed, resolve deps, run the package
+  umload install|NAME|URL      install into the cache
+  umload remove|NAME           delete a cached package
+  umload list                  loaded and cached packages
+  umload info|NAME             metadata for one package
+  umload deps|NAME             dependency tree
+  umload verify|NAME           install dependencies without running
+  umload search|QUERY          search the registry
+  umload cache|dir             print the cache directory
+  umload cache|clear           empty the cache
+  umload publish|NAME|VERSION  copy into ./boxpkg, update the registry, push</code></pre>
+<p>A package is an ordinary BX file whose metadata lives in leading <code>//</code> comments:</p>
+<pre><code class="language-text">  // name: mypack
+  // version: 1.0.0
+  // author: you
+  // description: what it does
+  // deps: otherpack, thirdpack</code></pre>
+<p>Dependencies are installed automatically and cycles are reported rather than looped. <code>require</code> marks the package as loaded in a <code>pkg_NAME</code> box. The registry is <code>$BOXEDLANG_REGISTRY</code>, <code>./boxpkg/registry.txt</code>, <code>./packages/registry.txt</code>, <code>./registry.txt</code>, or one installed next to the <code>bx</code> binary; each line is <code>name|raw url|version|description|author</code>. See <code>boxpkg/README.md</code> for the package format.</p>
+<ul>
+<li><strong><code>bxe</code> — the environment manager.</strong> Env objects keep their own private boxes and a command counter while a running program executes other work, then hand the result back. Actions: <code>list</code>, <code>create|name</code>, <code>run|name|cmd...</code>, <code>all|cmd...</code> (run the same command in every env), <code>cmds|name</code> (show the command counter), <code>reset|name</code>. A lazy eviction policy keeps at most 16 envs and resets the highest-use env when a program passes 2000 commands inside it.</li>
+</ul>
+<ul>
+<li><strong><code>lib</code>, <code>high.*</code>, and <code>low.*</code> — the library layer.</strong> <code>lib list</code> shows compiled-in vs. active libraries, <code>lib load|NAME</code> turns one on, <code>lib unload|NAME</code> turns one off. The <code>high.*</code> commands are gated on their library being active and refuse with an error otherwise:</li>
+<li><code>high.wifi.init</code>, <code>high.wifi.connect|ssid|pass|sec</code>, <code>high.wifi.status|box</code>, <code>high.wifi.info</code>, <code>high.wifi.env|box</code>, <code>high.wifi.disconnect</code>. On the native environment connect simulates a successful association (<code>ip=192.168.1.100</code>).</li>
+<li><code>low.*</code> is always available: <code>low.arch</code>, <code>low.env</code>, <code>low.tick|box</code> (monotonic nanoseconds), <code>low.pid|box</code>.</li>
+</ul>
+<h3 id="the-gfx-library">The GFX library</h3>
+<p><code>lib load|gfx</code> turns on a themed UI element tree. Elements are identified by a <code>uint32</code> id; pass <code>0</code> as the id to have one assigned, and the box you name is set to the real id. Note that the subcommand is part of the command token, so it is spelled <code>high.gfx.new</code>, not <code>high.gfx new</code>.</p>
+<pre><code class="language-text">high.gfx.types                                  element type names
+high.gfx.color|BOX|#rgb                         parse a color to an integer
+high.gfx.colorhex|BOX|INTEGER                   format an integer back to #rrggbb
+high.gfx.theme|BOX|[c#fff.h#000.r$4.t%100.x#000.b#eee]   parse a theme
+high.gfx.new|ID|PARENT|TYPE|X|Y [W|H|THEME|BOX|TEXT]     create an element
+high.gfx.set|ID|FIELD|VALUE                     field: x y w h text theme box
+high.gfx.get|ID [FIELD] [BOX]                   read an element back
+high.gfx.count [BOX]                            number of elements
+high.gfx.list                                   print every element
+high.gfx.clear                                  drop every element</code></pre>
+<p><code>TYPE</code> is one of <code>button</code>, <code>text</code>, <code>slider</code>, <code>box</code>, <code>textbox</code>, <code>label</code>, <code>image</code>, <code>panel</code>.</p>
+<p>A theme string is a bracketed list of exactly six tags, <strong>in this order</strong>: <code>c</code> primary, <code>h</code> highlight, <code>r</code> rounding, <code>t</code> transparency, <code>x</code> text, <code>b</code> background. Colors are <code>#rgb</code>, <code>#rgba</code>, <code>#rrggbb</code> or <code>#rrggbbaa</code>. Rounding is <code>$50</code> for a percentage or <code>8</code> for pixels. Transparency is <code>0</code>–<code>100</code>. Anything else is a parse error, and <code>high.gfx.theme</code> leaves the box empty.</p>
+<p>Every successfully parsed theme is pushed onto a four-deep history. A theme of <code>^^</code> carets inherits from the most recently pushed theme, <code>^^^</code> from the one before that, and so on up to <code>^^^^^</code>. Asking for more history than exists is a parse error, and inheriting does not itself push a new entry.</p>
+<pre><code class="language-text">lib load|gfx
+high.gfx.theme|c|[c#f00.h#0f0.r$8.t%50.x#00f.b#111]
+high.gfx.theme|same|[c#00f.h#0f0.r$8.t%50.x#00f.b#111]
+high.gfx.theme|inherit|^^^^^</code></pre>
+<pre><code class="language-text">lib load|gfx
+high.gfx.new|1|0|button|10|20|100|30|[c#f00.h#0f0.r$4.t%90.x#00f.b#eee]|btn|OK
+high.gfx.set|1|text|Cancel
+high.gfx.get|1|text|out
+say $out</code></pre>
+<hr>
+<p class="next"><a href="index.html">All chapters</a></p>
+</div></div>
+</main>
+<footer>
+    BoxedLANG v0.2.0 &middot; <a href="https://github.com/mc20000-01/boxed">source</a> &middot;
+    <a href="https://github.com/mc20000-01/BoxPkg">BoxPkg registry</a>
+</footer>
+</body>
+</html>

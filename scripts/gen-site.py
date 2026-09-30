@@ -4,7 +4,7 @@
 Everything is generated from sources that already exist in the repo, so the
 pages cannot drift from the code:
 
-  docs.html      box-docs-redone.md   (the user's manual)
+  docs/*         docs/*.md            (one page per chapter, with a sidebar)
   packages.html  boxpkg/registry.txt  (with deps read from the package files)
 
 index.html and install.html have their copy here because it is prose about the
@@ -24,7 +24,7 @@ REPO = "https://github.com/mc20000-01/boxed"
 
 PAGES = {
     "index.html": "Home",
-    "docs.html": "Docs",
+    "docs/index.html": "Docs",
     "packages.html": "Packages",
     "install.html": "Install",
 }
@@ -34,10 +34,22 @@ def esc(s):
     return html.escape(s, quote=False)
 
 
-def layout(page, title, body, desc):
+def layout(page, title, body, desc, depth=0):
+    """Wrap a page. `depth` is how deep the page sits, for relative links."""
+    up = "../" * depth
+
+    def active(href):
+        if href == page:
+            return True
+        # "docs/index.html" stands in for every docs/<chapter>.html
+        if href.endswith("index.html"):
+            base = href[: -len("index.html")]
+            return bool(base) and page.startswith(base)
+        return False
+
     nav = "\n".join(
-        '        <a class="nav%s" href="%s">%s</a>'
-        % (" active" if href == page else "", href, label)
+        '        <a class="nav%s" href="%s%s">%s</a>'
+        % (" active" if active(href) else "", up, href, label)
         for href, label in PAGES.items()
     )
     return f"""<!DOCTYPE html>
@@ -47,19 +59,19 @@ def layout(page, title, body, desc):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{esc(title)}</title>
 <meta name="description" content="{esc(desc)}">
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="style.css">
+<link rel="icon" href="{up}favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="{up}style.css">
 </head>
 <body>
 <nav class="top">
     <div class="inner">
-        <a class="brand" href="index.html"><span class="sq">BX</span>BoxedLANG</a>
+        <a class="brand" href="{up}index.html"><span class="sq">BX</span>BoxedLANG</a>
         {nav}
         <span class="spacer"></span>
         <a class="nav" href="{REPO}" rel="noopener">GitHub</a>
     </div>
 </nav>
-<main class="wrap{'' if page == 'docs.html' else ''}">
+<main class="wrap{'' if page.startswith('docs/') else ''}">
 {body}
 </main>
 <footer>
@@ -202,40 +214,135 @@ def md_to_html(md):
 
 
 def toc_from(md):
-    """Chapter links for the top of the docs page."""
+    """Section links for the top of a page, h2 only: h3 is a detail, not a
+    destination."""
     items = []
     for m in re.finditer(r"^(#{2,3})\s+(.*)$", md, re.M):
-        lvl = len(m.group(1))
-        text = m.group(2).strip()
-        if lvl == 3:
+        if len(m.group(1)) != 2:
             continue
-        items.append((lvl, text, slug(text)))
+        text = m.group(2).strip()
+        items.append((text, slug(text)))
     return items
 
 
-def build_docs():
-    src = os.path.join(ROOT, "box-docs-redone.md")
-    md = open(src, encoding="utf-8").read()
-    body = md_to_html(md)
-    items = toc_from(md)
-    toc = ["<details class=\"toc\" open>", "<summary>Contents</summary>", "<ol>"]
-    for lvl, text, anchor in items:
-        toc.append('<li><a href="#%s">%s</a></li>' % (anchor, inline(text)))
-    toc.append("</ol>")
-    toc.append("</details>")
-    intro = (
-        "<div class=\"note\"><strong>This is the manual, rendered.</strong> "
-        "It is generated from <code>box-docs-redone.md</code> in the repository, "
-        "so the site and the source never disagree.</div>"
+# Each chapter is a file in docs/. The number is stripped for the slug so the
+# page is docs/getting-started.html rather than docs/01-getting-started.html,
+# which keeps the URLs from looking like they are sorted by date.
+def doc_chapters():
+    src = os.path.join(ROOT, "docs")
+    names = sorted(f for f in os.listdir(src) if f.endswith(".md"))
+    out = []
+    for name in names:
+        md = open(os.path.join(src, name), encoding="utf-8").read()
+        m = re.search(r"^#\s+(.*)$", md, re.M)
+        title = m.group(1).strip() if m else name[:-3]
+        out.append(
+            {
+                "file": name,
+                "title": title,
+                "slug": re.sub(r"^\d+-", "", name[:-3]),
+                "md": md,
+            }
+        )
+    return out
+
+
+def rewrite_links(md):
+    """Point .md links at the generated .html pages."""
+    return re.sub(r"\]\(([^)]+)\.md\)", r"](\1.html)", md)
+
+
+def doc_sidebar(chapters, current):
+    """The chapter list, shown on every docs page."""
+    out = ['<nav class="side">', "    <p class=\"side-t\">Manual</p>", "    <ul>"]
+    for ch in chapters:
+        cls = " on" if ch["slug"] == current else ""
+        out.append(
+            '        <li><a class="%s" href="%s.html">%s</a></li>'
+            % (cls.strip(), ch["slug"], esc(ch["title"]))
+        )
+    out.append("    </ul>")
+    out.append("    <p class=\"side-f\">")
+    out.append('        <a href="index.html">All chapters</a> &middot; ')
+    out.append('        <a href="https://github.com/mc20000-01/boxed" rel="noopener">source</a>')
+    out.append("    </p>")
+    out.append("</nav>")
+    return "\n".join(out)
+
+
+def build_docs(chapters):
+    pages = {}
+
+    # The landing page lists the chapters rather than repeating them, so a new
+    # docs/*.md file appears here without anyone editing this script.
+    cards = []
+    for i, ch in enumerate(chapters):
+        body = [
+            '<article class="card">',
+            '  <h2><a href="%s.html">%s</a></h2>' % (ch["slug"], esc(ch["title"])),
+        ]
+        first = ""
+        m = re.search(r"\n##\s+(.*?)\n(.*?)(?=\n##\s|\Z)", ch["md"], re.S)
+        if m:
+            # The teaser is prose, so a heading that opens a section is
+            # dropped rather than shown as literal "###" on a card.
+            para = re.split(r"\n(?=#{2,6}\s)", m.group(2).strip(), 1)[0]
+            kept = []
+            for ln in para.split("\n"):
+                t = ln.strip()
+                # A chapter that opens with a list has no lead paragraph to
+                # quote, so the card falls back to the section title alone.
+                if not t or re.match(r"^([-*+]|\d+\.)\s", t) or t.startswith("#"):
+                    break
+                kept.append(t)
+            first = " ".join(" ".join(kept).split())[:190]
+            if len(first) >= 190:
+                first = first[:190].rsplit(" ", 1)[0] + "..."
+            body.append("  <p>%s</p>" % inline(first))
+        body.append(
+            '  <p class="more"><a href="%s.html">Read %s</a></p>'
+            % (ch["slug"], esc(ch["title"]))
+        )
+        body.append("</article>")
+        cards.append("\n".join(body))
+    body = "\n".join(
+        [
+            "<h1>The BoxedLANG manual</h1>",
+            '<div class="note">Every page here is a <code>docs/*.md</code> file in the '
+            "repository, rendered by <code>make site</code>. Add a chapter by adding a "
+            "file; the list and the sidebar follow.</div>",
+            '<div class="grid">',
+            "\n".join(cards),
+            "</div>",
+        ]
     )
-    body = intro + "\n" + "\n".join(toc) + "\n" + body
-    return layout(
-        "docs.html",
+    pages["index.html"] = layout(
+        "docs/index.html",
         "Docs - BoxedLANG",
-        body,
-        "The complete BoxedLANG user's manual: boxes, jumps, loops, packages, "
-        "libraries, and compile targets.",
+        '<div class="docs wide">%s</div>' % body,
+        "The complete BoxedLANG manual: boxes, jumps, loops, packages, libraries, "
+        "and compile targets.",
+        depth=1,
     )
+
+    for ch in chapters:
+        md = rewrite_links(ch["md"])
+        parts = [
+            doc_sidebar(chapters, ch["slug"]),
+            '<div class="doc">',
+            md_to_html(md),
+            '<p class="next"><a href="index.html">All chapters</a></p>',
+            "</div>",
+        ]
+        # A wide page gets the sidebar beside the text; the landing page does not.
+        pages["%s.html" % ch["slug"]] = layout(
+            "docs/%s.html" % ch["slug"],
+            "%s - BoxedLANG docs" % ch["title"],
+            '<div class="docs">%s</div>' % "\n".join(parts),
+            esc(ch["title"]),
+            depth=1,
+        )
+    return pages
 
 
 # ---------------------------------------------------------------- packages
@@ -346,7 +453,7 @@ def build_index():
     </p>
     <div class="btnrow">
         <a class="btn primary" href="install.html">Get BoxedLANG</a>
-        <a class="btn" href="docs.html">Read the manual</a>
+        <a class="btn" href="docs/index.html">Read the manual</a>
         <a class="btn" href="packages.html">Browse packages</a>
     </div>
 </div>
@@ -419,7 +526,7 @@ say $st_out</code></pre>
         <code>make</code>.</p>
     </div>
     <div class="card">
-        <h3><a href="docs.html">The manual</a></h3>
+        <h3><a href="docs/index.html">The manual</a></h3>
         <p>Boxes, jumps, loops, files, packages, libraries, and compile
         targets.</p>
     </div>
@@ -522,20 +629,45 @@ FAVICON = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
 """
 
 
+DOCS_REDIRECT = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Docs - BoxedLANG</title>
+<meta http-equiv="refresh" content="0; url=docs/index.html">
+<link rel="canonical" href="docs/index.html">
+</head>
+<body>
+<p>The manual moved to <a href="docs/index.html">docs/index.html</a>.</p>
+</body>
+</html>
+"""
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     files = {
         "index.html": build_index(),
-        "docs.html": build_docs(),
         "packages.html": build_packages(),
         "install.html": build_install(),
         "favicon.svg": FAVICON,
+        # The manual moved to docs/*.html. Keep the old URL working so links
+        # from outside the site do not rot.
+        "docs.html": DOCS_REDIRECT,
     }
     for name, content in files.items():
         with open(os.path.join(OUT, name), "w", encoding="utf-8") as fh:
             fh.write(content)
         print("  site/%s (%d bytes)" % (name, len(content)))
-    print("site built: %d pages" % len(files))
+
+    docs_dir = os.path.join(OUT, "docs")
+    os.makedirs(docs_dir, exist_ok=True)
+    docs = build_docs(doc_chapters())
+    for name, content in sorted(docs.items()):
+        with open(os.path.join(docs_dir, name), "w", encoding="utf-8") as fh:
+            fh.write(content)
+        print("  site/docs/%s (%d bytes)" % (name, len(content)))
+    print("site built: %d pages" % (len(files) + len(docs)))
 
 
 if __name__ == "__main__":

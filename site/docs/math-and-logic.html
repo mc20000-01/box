@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Math and Logic - BoxedLANG docs</title>
+<meta name="description" content="Math and Logic">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<nav class="top">
+    <div class="inner">
+        <a class="brand" href="../index.html"><span class="sq">BX</span>BoxedLANG</a>
+                <a class="nav" href="../index.html">Home</a>
+        <a class="nav active" href="../docs/index.html">Docs</a>
+        <a class="nav" href="../packages.html">Packages</a>
+        <a class="nav" href="../install.html">Install</a>
+        <span class="spacer"></span>
+        <a class="nav" href="https://github.com/mc20000-01/boxed" rel="noopener">GitHub</a>
+    </div>
+</nav>
+<main class="wrap">
+<div class="docs"><nav class="side">
+    <p class="side-t">Manual</p>
+    <ul>
+        <li><a class="" href="getting-started.html">Getting Started</a></li>
+        <li><a class="on" href="math-and-logic.html">Math and Logic</a></li>
+        <li><a class="" href="flow-control.html">Jumping Around: Flow Control</a></li>
+        <li><a class="" href="power-users.html">Power User Tricks</a></li>
+        <li><a class="" href="command-line.html">Driving bx From Your Shell</a></li>
+        <li><a class="" href="compiling.html">Implementations and Compile Targets</a></li>
+    </ul>
+    <p class="side-f">
+        <a href="index.html">All chapters</a> &middot; 
+        <a href="https://github.com/mc20000-01/boxed" rel="noopener">source</a>
+    </p>
+</nav>
+<div class="doc">
+<h1 id="math-and-logic">Math and Logic</h1>
+<h2 id="chapter-4-computer-math">CHAPTER 4: COMPUTER MATH</h2>
+<p>Your computer is a giant calculator, and BX lets you tap into that power using the <code>math</code> command! It performs integer arithmetic.</p>
+<p>The syntax looks like this: <code>math TARGET|LEFT|RIGHT|OP</code>.</p>
+<ul>
+<li><strong>TARGET:</strong> The box where the answer will be saved.</li>
+<li><strong>LEFT &amp; RIGHT:</strong> The numbers you want to calculate.</li>
+<li><strong>OP:</strong> The operator you want to use.</li>
+</ul>
+<p>BX supports addition (<code>+</code>), subtraction (<code>-</code>), multiplication (<code>*</code> or <code>x</code>), integer division (<code>/</code>), and modulo (<code>%</code>).</p>
+<pre><code class="language-bx">box a|20
+box b|7
+
+math add|$a|$b|+
+say The sum is $add
+</code></pre>
+<p>. Because BX uses integer arithmetic, dividing 10 by 3 (<code>math answer|10|3|/</code>) will give you <code>3</code>, not a decimal. Also, if you ever accidentally try to divide by zero, BX safely returns <code>0</code> to keep your program from crashing!</p>
+<hr>
+<h2 id="chapter-5-making-decisions">CHAPTER 5: MAKING DECISIONS</h2>
+<p>A smart program can make choices! BX does this using <strong>conditions</strong> to compare two values. You can use the following comparison operators:</p>
+<ul>
+<li><code>==</code> (Equal)</li>
+</ul>
+<ul>
+<li><code>!=</code> (Not equal)</li>
+</ul>
+<ul>
+<li><code>&gt;</code> (Greater than)</li>
+</ul>
+<ul>
+<li><code>&lt;</code> (Less than)</li>
+</ul>
+<ul>
+<li><code>&gt;=</code> (Greater than or equal)</li>
+</ul>
+<ul>
+<li><code>&lt;=</code> (Less than or equal)</li>
+</ul>
+<p>BX is very flexible. You can put the operator right in the middle, like <code>\(score|==|100</code>, or you can put it at the very end, like <code>\)score|100|==</code>. Both mean the exact same thing!</p>
+<h3 id="the-test-command">The TEST Command</h3>
+<p><code>test</code> evaluates a condition and stores one of two values depending on if it is true or false.</p>
+<pre><code class="language-bx">test result|10|&gt;|5|YES|NO
+say $result
+</code></pre>
+<p>Because 10 is greater than 5, the <code>$result</code> box will contain <code>YES</code>. If you leave off the true/false values, <code>test</code> uses <code>1</code> for true and <code>0</code> for false.</p>
+<h3 id="the-if-command">The IF Command</h3>
+<p>If you want to execute an entire command <em>only</em> when a condition is true, use <code>if</code>.</p>
+<pre><code class="language-bx">box score|100
+if $score|&gt;|50|say|You passed!
+</code></pre>
+<p>This checks if the score is greater than 50. Because it is, it executes the nested command <code>say You passed!</code>.</p>
+<p>The nested command can be <em>anything</em>, including <code>jump</code> or <code>mark</code>. That is how the built-in <code>os/os.bx</code> does its login gate in a single line:</p>
+<pre><code class="language-bx">if $loggedin|==|2|jump|loggedin|m
+</code></pre>
+<p>If the condition is false, <code>if</code> does nothing at all and the program moves on to the next line.</p>
+<hr>
+<p class="next"><a href="index.html">All chapters</a></p>
+</div></div>
+</main>
+<footer>
+    BoxedLANG v0.2.0 &middot; <a href="https://github.com/mc20000-01/boxed">source</a> &middot;
+    <a href="https://github.com/mc20000-01/BoxPkg">BoxPkg registry</a>
+</footer>
+</body>
+</html>

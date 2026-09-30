@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Driving bx From Your Shell - BoxedLANG docs</title>
+<meta name="description" content="Driving bx From Your Shell">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<nav class="top">
+    <div class="inner">
+        <a class="brand" href="../index.html"><span class="sq">BX</span>BoxedLANG</a>
+                <a class="nav" href="../index.html">Home</a>
+        <a class="nav active" href="../docs/index.html">Docs</a>
+        <a class="nav" href="../packages.html">Packages</a>
+        <a class="nav" href="../install.html">Install</a>
+        <span class="spacer"></span>
+        <a class="nav" href="https://github.com/mc20000-01/boxed" rel="noopener">GitHub</a>
+    </div>
+</nav>
+<main class="wrap">
+<div class="docs"><nav class="side">
+    <p class="side-t">Manual</p>
+    <ul>
+        <li><a class="" href="getting-started.html">Getting Started</a></li>
+        <li><a class="" href="math-and-logic.html">Math and Logic</a></li>
+        <li><a class="" href="flow-control.html">Jumping Around: Flow Control</a></li>
+        <li><a class="" href="power-users.html">Power User Tricks</a></li>
+        <li><a class="on" href="command-line.html">Driving bx From Your Shell</a></li>
+        <li><a class="" href="compiling.html">Implementations and Compile Targets</a></li>
+    </ul>
+    <p class="side-f">
+        <a href="index.html">All chapters</a> &middot; 
+        <a href="https://github.com/mc20000-01/boxed" rel="noopener">source</a>
+    </p>
+</nav>
+<div class="doc">
+<h1 id="driving-bx-from-your-shell">Driving bx From Your Shell</h1>
+<h2 id="chapter-8-driving-bx-from-your-shell">CHAPTER 8: DRIVING BX FROM YOUR SHELL</h2>
+<p>Everything above is the language. The <code>bx</code> program itself is the tool that runs, transpiles, and compiles it.</p>
+<pre><code class="language-text">usage: bx run FILE | bx transpile FILE -o OUT.c | bx emit-c FILE | bx compile FILE -o OUT [--target T] | bx asm FILE -o OUT.s [--target T] | bx raw FILE -o OUT.bin [--target T] | bx targets | bx version | add -t/--time for timing, options may appear anywhere
+</code></pre>
+<h3 id="the-commands">The commands</h3>
+<ul>
+<li><strong><code>bx run FILE</code></strong> interprets <code>FILE</code> and prints the output of your program right now. Nothing is written to disk.</li>
+</ul>
+<ul>
+<li><strong><code>bx transpile FILE -o OUT.c</code></strong> writes a self-contained C program to <code>OUT.c</code>. The BX source is embedded inside the C file along with the runtime, so compiling <code>OUT.c</code> later gives you a program that behaves exactly like <code>bx run</code> did.</li>
+</ul>
+<ul>
+<li><strong><code>bx emit-c FILE</code></strong> is <code>transpile</code> without the file: it prints the generated C to your terminal so you can pipe it somewhere.</li>
+</ul>
+<ul>
+<li><strong><code>bx compile FILE -o OUT</code></strong> builds a native executable for your machine.</li>
+</ul>
+<ul>
+<li><strong><code>bx asm FILE -o OUT.s</code></strong> stops one step earlier and writes assembly instead of a binary.</li>
+</ul>
+<ul>
+<li><strong><code>bx raw FILE -o OUT.bin</code></strong> goes all the way to a flat binary with no ELF wrapper, ready to be loaded by a bootloader or written into a disk image.</li>
+</ul>
+<ul>
+<li><strong><code>bx targets</code></strong> lists every known compile target with the compiler it uses.</li>
+</ul>
+<ul>
+<li><strong><code>bx version</code></strong> prints the version of <code>bx</code> and compares it with the <code>VERSION</code> file in the project, so you can tell at a glance whether you are up to date.</li>
+</ul>
+<h3 id="the-flags">The flags</h3>
+<ul>
+<li><strong><code>-o OUT</code></strong> names the output file. It is required by <code>transpile</code>, <code>compile</code>, <code>asm</code>, and <code>raw</code>.</li>
+</ul>
+<ul>
+<li><strong><code>--target NAME</code></strong> picks the compiler and flags for <code>compile</code>, <code>asm</code>, and <code>raw</code>. Without it you get <code>native</code>.</li>
+</ul>
+<ul>
+<li><strong><code>--keep-c</code></strong> leaves the intermediate generated C file in <code>/tmp</code> instead of deleting it, which is handy when you want to see exactly what your BX turned into.</li>
+</ul>
+<ul>
+<li><strong><code>-t</code> / <code>--time</code></strong> prints how long a run or compile took to standard error as <code>bx: MODE FILE took X.XXXXXX s</code>. Options can appear anywhere on the command line, before or after the mode and file, so <code>./bx -t run file.bx</code> and <code>./bx --time compile file.bx -o out</code> both work.</li>
+</ul>
+<ul>
+<li><strong><code>--keep-comments</code>, <code>-D NAME</code>, <code>-U NAME</code></strong> are accepted so scripts and build files have a stable command line, but the transpiler does not act on them yet.</li>
+</ul>
+<h3 id="a-taste-of-the-target-list">A taste of the target list</h3>
+<p><code>bx targets</code> lists the compilers and cross compilers that <code>compile</code>, <code>asm</code>, and <code>raw</code> know how to drive. Every one of them produces a normal userspace program for a host CPU:</p>
+<ul>
+<li><strong><code>native</code></strong>, which is just <code>cc</code> for the machine you are on.</li>
+</ul>
+<ul>
+<li><strong>Cross compilers</strong>, where you get a userspace program for another CPU: <code>x86_64</code>, <code>i386</code>, <code>i686</code>, <code>aarch64</code>, <code>armv7</code>, <code>arm</code>, <code>riscv64</code>, <code>riscv32</code>, <code>mips</code>, <code>mipsel</code>, <code>mips64</code>, <code>powerpc</code>, <code>ppc64</code>, <code>ppc64le</code>, <code>s390x</code>, <code>sparc64</code>, and <code>loongarch64</code>. These need the matching cross compiler installed, which is what <code>setup.sh --cross</code> tries to arrange for you.</li>
+</ul>
+<p>There are currently no freestanding, Multiboot, or UEFI compile targets. The kernel under <code>src/</code> is a hand-written ELF32 Multiboot1 image built by <code>make kernel</code> and linked with <code>src/kernel.ld</code>; it is not produced by <code>bx compile</code>. Adding those target families would mean teaching the transpiler to emit freestanding code and giving the runtime its own box storage, since the current runtime leans on the C standard library.</p>
+<h3 id="if-you-would-rather-use-make">If you would rather use make</h3>
+<p>The project ships a <code>Makefile</code> that wraps all of this:</p>
+<pre><code class="language-text">make            # build ./bx
+make smoke      # run, transpile, compile, asm, and raw a small test program
+make features   # string and file builtin tests
+make gfx-tests  # gfx library tests
+make packagetests  # package manager tests, using an isolated cache
+make run-example            # run examples/hello.bx
+make compile-example        # compile it with $(TARGET), default native
+make targets                # list compile targets
+make os                    # compile os/os.bx into .build/boxed-os
+make run-os                # build and run boxed-os
+make kernel                # build .build/kernel.elf, the Multiboot1 kernel
+make verify-kernel         # boot that kernel under QEMU and check for BOXEDLANG-OK
+make install               # install to /usr/local/bin, PREFIX= overrides it
+make clean
+</code></pre>
+<p><code>setup.sh</code> is the one-shot helper around all of it. Run <code>./setup.sh</code> to build and smoke test, <code>./setup.sh --install</code> to install system wide, <code>./setup.sh --user</code> to install into <code>~/.local/bin</code>, and <code>./setup.sh --cross</code> to also try installing cross compilers.</p>
+<hr>
+<p class="next"><a href="index.html">All chapters</a></p>
+</div></div>
+</main>
+<footer>
+    BoxedLANG v0.2.0 &middot; <a href="https://github.com/mc20000-01/boxed">source</a> &middot;
+    <a href="https://github.com/mc20000-01/BoxPkg">BoxPkg registry</a>
+</footer>
+</body>
+</html>

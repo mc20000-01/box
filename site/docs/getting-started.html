@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting Started - BoxedLANG docs</title>
+<meta name="description" content="Getting Started">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<nav class="top">
+    <div class="inner">
+        <a class="brand" href="../index.html"><span class="sq">BX</span>BoxedLANG</a>
+                <a class="nav" href="../index.html">Home</a>
+        <a class="nav active" href="../docs/index.html">Docs</a>
+        <a class="nav" href="../packages.html">Packages</a>
+        <a class="nav" href="../install.html">Install</a>
+        <span class="spacer"></span>
+        <a class="nav" href="https://github.com/mc20000-01/boxed" rel="noopener">GitHub</a>
+    </div>
+</nav>
+<main class="wrap">
+<div class="docs"><nav class="side">
+    <p class="side-t">Manual</p>
+    <ul>
+        <li><a class="on" href="getting-started.html">Getting Started</a></li>
+        <li><a class="" href="math-and-logic.html">Math and Logic</a></li>
+        <li><a class="" href="flow-control.html">Jumping Around: Flow Control</a></li>
+        <li><a class="" href="power-users.html">Power User Tricks</a></li>
+        <li><a class="" href="command-line.html">Driving bx From Your Shell</a></li>
+        <li><a class="" href="compiling.html">Implementations and Compile Targets</a></li>
+    </ul>
+    <p class="side-f">
+        <a href="index.html">All chapters</a> &middot; 
+        <a href="https://github.com/mc20000-01/boxed" rel="noopener">source</a>
+    </p>
+</nav>
+<div class="doc">
+<h1 id="getting-started">Getting Started</h1>
+<h2 id="chapter-1-meet-your-new-best-friend-the-box">CHAPTER 1: MEET YOUR NEW BEST FRIEND, THE BOX!</h2>
+<p>Imagine a little mailbox inside your computer's memory. In BX, a box stores a value under a specific name.</p>
+<p>To create your very first box, you simply use the <code>box</code> command followed by the name you want to give it, the special <code>|</code> symbol (which BX uses to separate arguments), and the value you want to put inside.</p>
+<p>For example:</p>
+<pre><code class="language-bx">box name|mc20000
+</code></pre>
+<p>This creates a box named <code>name</code> containing the text <code>mc20000</code>.</p>
+<p>Whenever you want to pull that information back out and use it, you just place a <code>$</code> symbol right in front of the box's name. If you want your computer to speak to you, you can combine this with the <code>say</code> command:</p>
+<pre><code class="language-bx">say Hello $name
+</code></pre>
+<p>Your computer will proudly output:</p>
+<pre><code class="language-text">Hello mc20000
+</code></pre>
+<p>.</p>
+<p>You can change what is inside a box at any time! Assigning to an existing box simply replaces its previous value.</p>
+<pre><code class="language-bx">box score|10
+box score|20
+say $score
+</code></pre>
+<p>This will print <code>20</code> because the old score was replaced.</p>
+<p>Box names are not as strict as you might think. A name can contain letters, digits, and the characters <code>_</code>, <code>-</code>, <code>?</code>, and <code>#</code>. That is why BX programs can have boxes called <code>file-usr</code>, <code>boot?</code>, or <code>#1</code>.</p>
+<p>Boxes can even contain references to <em>other</em> boxes. Values are resolved when the <code>box</code> command runs, so if <code>name</code> already holds <code>BX</code>, a box whose value is <code>Hello \)name</code> stores the text <code>Hello BX</code>. This is what lets a box be a little template.</p>
+<hr>
+<h2 id="chapter-2-writing-your-first-program">CHAPTER 2: WRITING YOUR FIRST PROGRAM</h2>
+<p>Are you ready to write a real program? Create a file on your disk named <code>hello.bx</code>.</p>
+<p>Type these exact lines into your file:</p>
+<pre><code class="language-bx">box name|BX
+say Hello from $name!
+end
+</code></pre>
+<p>.</p>
+<p>When you run this, your program will perform three magic steps:</p>
+<ol>
+<li>It creates a box called <code>name</code>.</li>
+</ol>
+<ol>
+<li>It prints a message containing the contents of your box.</li>
+</ol>
+<ol>
+<li>It uses the <code>end</code> command to tell the computer the program is finished.</li>
+</ol>
+<p>Output:</p>
+<pre><code class="language-text">Hello from BX!
+</code></pre>
+<p>.</p>
+<h3 id="the-golden-rules-of-bx-syntax">The Golden Rules of BX Syntax</h3>
+<ul>
+<li><strong>The Separator:</strong> The vertical bar <code>|</code> is BX's normal argument separator. You will use it to split up the different pieces of your commands.</li>
+</ul>
+<ul>
+<li><strong>Whitespace is Preserved:</strong> If you put spaces inside a value, BX respects them exactly as written. For example, <code>box message|Hello     world</code> keeps all those spaces perfectly intact because the <code>|</code> character is the only thing that officially ends a value.</li>
+</ul>
+<ul>
+<li><strong>Case Doesn't Matter:</strong> Commands are not normally case-sensitive. Typing <code>SAY Hello</code> works exactly the same as <code>say Hello</code>.</li>
+</ul>
+<ul>
+<li><strong>Comments:</strong> If you ever want to leave a note for yourself in your code, just use <code>//</code>. Everything after the <code>//</code> is treated as a comment and ignored by the computer.</li>
+</ul>
+<ul>
+<li><strong>Unknown commands do nothing:</strong> BX never crashes on a command it does not know. The line is simply skipped, so a typo costs you one step and nothing else.</li>
+</ul>
+<hr>
+<h2 id="chapter-3-talking-and-listening">CHAPTER 3: TALKING AND LISTENING</h2>
+<h3 id="printing-with-say">Printing with SAY</h3>
+<p>The <code>say</code> command prints text to your output screen.</p>
+<pre><code class="language-bx">say Hello
+</code></pre>
+<p>.</p>
+<p>If you want to add a dramatic pause, you can add a time delay as an optional second argument.</p>
+<pre><code class="language-bx">say Hello|1
+</code></pre>
+<p>This prints "Hello" and then waits for the specified amount of time before moving to the next instruction. If you want absolutely no delay, you can explicitly type <code>|0</code>.</p>
+<h3 id="getting-input-with-ask">Getting Input with ASK</h3>
+<p>What if you want the user to type something in? Use the <code>ask</code> command! <code>ask</code> reads input from the user and safely tucks it away into a box.</p>
+<p>Here is the most important rule for <code>ask</code>: <strong>The last space-separated word is always the target box</strong>. Everything before that final word is printed as the prompt for the user.</p>
+<pre><code class="language-bx">ask What is your name username
+</code></pre>
+<p>In this example, the prompt is "What is your name" and the user's answer gets stored in the box <code>$username</code>.</p>
+<p>If you just type <code>ask username</code>, there is no prompt message, and the computer just waits for the user to type something to put into <code>$username</code>.</p>
+<p>Because box names may contain digits and <code>#</code>, <code>ask #1</code> and <code>ask op</code> are perfectly legal. The built-in boxed-OS uses this heavily: <code>ask #1</code>, <code>ask op</code>, <code>ask #2</code> collects a calculator expression with no prompt at all.</p>
+<hr>
+<p class="next"><a href="index.html">All chapters</a></p>
+</div></div>
+</main>
+<footer>
+    BoxedLANG v0.2.0 &middot; <a href="https://github.com/mc20000-01/boxed">source</a> &middot;
+    <a href="https://github.com/mc20000-01/BoxPkg">BoxPkg registry</a>
+</footer>
+</body>
+</html>

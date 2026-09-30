@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Implementations and Compile Targets - BoxedLANG docs</title>
+<meta name="description" content="Implementations and Compile Targets">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<nav class="top">
+    <div class="inner">
+        <a class="brand" href="../index.html"><span class="sq">BX</span>BoxedLANG</a>
+                <a class="nav" href="../index.html">Home</a>
+        <a class="nav active" href="../docs/index.html">Docs</a>
+        <a class="nav" href="../packages.html">Packages</a>
+        <a class="nav" href="../install.html">Install</a>
+        <span class="spacer"></span>
+        <a class="nav" href="https://github.com/mc20000-01/boxed" rel="noopener">GitHub</a>
+    </div>
+</nav>
+<main class="wrap">
+<div class="docs"><nav class="side">
+    <p class="side-t">Manual</p>
+    <ul>
+        <li><a class="" href="getting-started.html">Getting Started</a></li>
+        <li><a class="" href="math-and-logic.html">Math and Logic</a></li>
+        <li><a class="" href="flow-control.html">Jumping Around: Flow Control</a></li>
+        <li><a class="" href="power-users.html">Power User Tricks</a></li>
+        <li><a class="" href="command-line.html">Driving bx From Your Shell</a></li>
+        <li><a class="on" href="compiling.html">Implementations and Compile Targets</a></li>
+    </ul>
+    <p class="side-f">
+        <a href="index.html">All chapters</a> &middot; 
+        <a href="https://github.com/mc20000-01/boxed" rel="noopener">source</a>
+    </p>
+</nav>
+<div class="doc">
+<h1 id="implementations-and-compile-targets">Implementations and Compile Targets</h1>
+<h2 id="chapter-9-implementations-and-compile-targets">CHAPTER 9: IMPLEMENTATIONS AND COMPILE TARGETS</h2>
+<p>BX is a language specification first. A BX program should mean the same thing no matter whether it is run by an interpreter, transpiled into another language, assembled, or compiled straight into a raw binary.</p>
+<p>The reference implementation is written in C. In that form, the C program is responsible for reading BX source, parsing each command, managing boxes, resolving <code>$name</code> style substitutions, keeping the marks list, and executing control flow such as <code>jump</code>, <code>jumpif</code>, and <code>end</code>. Note the order of operations it must respect: the marks list is seeded with every <code>premark</code> while the program loads, and only then does execution begin, which is the whole reason <code>premark</code> can be jumped to before its line runs.</p>
+<p>BX can also be transpiled or compiled to lower-level targets:</p>
+<ul>
+<li><strong>C output:</strong> BX commands become C code. Boxes can be represented as a runtime map from names to string values, with helper functions for substitution, math, comparisons, input, output, and jumps.</li>
+</ul>
+<ul>
+<li><strong>Assembly output:</strong> BX commands become assembly instructions plus a small runtime model for string storage, box lookup, printing, input, integer math, and branch labels.</li>
+</ul>
+<ul>
+<li><strong>Raw binary output:</strong> BX can be compiled all the way into an executable binary for a chosen platform. This target must define the exact binary format, calling convention, system calls or runtime services, memory layout, and entry point.</li>
+</ul>
+<p>A transpiler does not have to copy the interpreter internally. It only has to preserve the observable behavior of the BX program: printed output, accepted input, box values, math results, jumps, program termination, and error handling.</p>
+<h3 id="required-target-behavior">Required target behavior</h3>
+<p>Every target should preserve these rules:</p>
+<ul>
+<li>Commands are parsed case-insensitively unless a future extension says otherwise.</li>
+<li><code>|</code> separates command arguments.</li>
+<li><code>//</code> begins a comment outside literal text.</li>
+<li>Unknown commands are skipped instead of raising an error.</li>
+<li>Boxes store values by name, and a name may contain letters, digits, <code>_</code>, <code>-</code>, <code>?</code>, and <code>#</code>.</li>
+<li><code>$name</code> resolves to the current value of a box, <code>$$name</code> to the value of the box that <code>name</code> points at.</li>
+<li>Reassigning a box replaces the old value.</li>
+<li>Integer math uses BX behavior, including returning <code>0</code> for division by zero.</li>
+<li><code>premark NAME</code> enters the marks list before any BX code runs, so forward jumps to a <code>premark</code> always work.</li>
+<li><code>mark NAME</code> enters the marks list when execution reaches it, points at the line after the <code>mark</code>, and re-points its name if it runs again.</li>
+<li>A jump to a name that is not in the marks list, or to a line number out of range, is ignored and execution continues on the next line.</li>
+<li><code>jump NAME|m</code> jumps to a mark, while <code>jump NUMBER</code> jumps to a 1-based physical line number.</li>
+<li><code>end</code> terminates the program.</li>
+</ul>
+<p>Targets may use different internal representations, but they should not change what a valid BX program does.</p>
+<h3 id="libraries">Libraries</h3>
+<p>Three C libraries live in <code>src/</code>. The wifi and gfx ones are now reachable from BX programs through the <code>lib</code> / <code>high.*</code> / <code>low.*</code> commands described in Chapter 7, exactly as chapter 3 describes: the same boxes, the same marks, the same jump rules.</p>
+<ul>
+<li><code>src/bx_gfx.c</code> and <code>src/bx_gfx.h</code> implement the themed UI element tree behind the <code>high.gfx.*</code> family described in Chapter 7: colors in <code>#rgb</code>, <code>#rgba</code>, <code>#rrggbb</code>, <code>#rrggbbaa</code> form, themes of exactly six ordered tags with <code>^^</code> caret inheritance, element creation and lookup by id, and theme push/pop history. <code>make gfx-tests</code> covers it.</li>
+<li><code>src/bx_wifi.c</code> and <code>src/bx_wifi.h</code> cover scanning, connecting, and status, with separate paths for native, web/WASM, and bare-metal environments. <code>lib load|wifi</code> switches on the <code>high.wifi.*</code> family; <code>low.env</code> reports which environment the runtime detected.</li>
+</ul>
+<h3 id="performance">Performance</h3>
+<p>Measured on this machine (<code>-O3 -march=native</code>, output to <code>/dev/null</code>). The interpreter pre-parses the program once at load into per-line op records, resolves <code>$name</code> without allocating in the hot case, stores short box values inline, caches the numeric value of numeric boxes, and only flushes stdout on a real terminal.</p>
+<ul>
+<li><strong>1,000,000-iteration counter loop</strong> (<code>math</code> + <code>jumpif</code>): 1.18 s before optimisation, 0.30 s after ≈ <strong>0.15 µs per command</strong>. Moving the rest of the way to 0.05 µs/command would require compiling the loop (JIT) rather than interpreting it.</li>
+<li><strong>FizzBuzz to 9,999</strong>: 0.043 s before, 0.010 s after.</li>
+<li><strong>Per-command 10,000-iteration loops</strong> (<code>stress.sh</code>): <code>box</code> 13→4 ms, <code>math</code> 17→6 ms, <code>test</code> 18→4 ms, <code>jumpif</code> 22→4 ms, <code>jump</code> 15→3 ms, <code>del</code> 16→4 ms.</li>
+</ul>
+<p>Run <code>./stress.sh</code> to reproduce these numbers on your own machine.</p>
+<p>You are now equipped with everything you need to become a BoxedLANG master.</p>
+<p class="next"><a href="index.html">All chapters</a></p>
+</div></div>
+</main>
+<footer>
+    BoxedLANG v0.2.0 &middot; <a href="https://github.com/mc20000-01/boxed">source</a> &middot;
+    <a href="https://github.com/mc20000-01/BoxPkg">BoxPkg registry</a>
+</footer>
+</body>
+</html>
