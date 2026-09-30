@@ -775,7 +775,7 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
             Res ao = rfast(&pr->boxes,p[1]);
             const char *act = ao.ptr;
             if(bx_caseeq(act,"open")||bx_caseeq(act,"append")){
-                if(n<3){ fprintf(stderr,"file %s: usage file|$h|%s|$path|$mode\n",act,act); }
+                if(n<3){ fprintf(stderr,"file %s: usage file|$n|%s|$path|$mode\n",act,act); }
                 else {
                     Res pa=rfast(&pr->boxes,p[2]);
                     Res md = n>=4 ? rfast(&pr->boxes,p[3]) : (Res){(char*)"r",0};
@@ -803,6 +803,24 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                      else { size_t w=fwrite(t.ptr,1,strlen(t.ptr),f); fflush(f);
                             char buf[32]; snprintf(buf,sizeof buf,"%zu",w);
                             box_set(&pr->boxes,p[0],buf); }
+                    if(hh.owned)free((char*)hh.ptr); if(t.owned)free((char*)t.ptr); }
+            }
+            else if(bx_caseeq(act,"writeline")){
+                /* write returns the byte count it wrote, and a test relies on
+                 * that number, so it stays exact. A line is a separate action
+                 * rather than a flag on write for the same reason: a spec file
+                 * is a list of lines, and nobody should have to count the
+                 * newlines by hand. */
+                if(n<4){ fprintf(stderr,"file writeline: usage file|$n|writeline|$h|$text\n"); }
+                else { Res hh=rfast(&pr->boxes,p[2]); Res t=rfast(&pr->boxes,p[3]);
+                    FILE *f=fhandle_get(hh.ptr);
+                    if(!f) fprintf(stderr,"file: %s is not open\n",hh.ptr);
+                    else { size_t blen=strlen(t.ptr);
+                           size_t w=fwrite(t.ptr,1,blen,f);
+                           if(!blen||t.ptr[blen-1]!='\n') w += fputc('\n',f)=='\n'?1:0;
+                           fflush(f);
+                           char buf[32]; snprintf(buf,sizeof buf,"%zu",w);
+                           box_set(&pr->boxes,p[0],buf); }
                     if(hh.owned)free((char*)hh.ptr); if(t.owned)free((char*)t.ptr); }
             }
             else if(bx_caseeq(act,"read")){
@@ -959,7 +977,7 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
             }
         }
         const char *fam = family;
-        if(!sub){ printf("ui commands: init | kinds|list | new|ID|KIND [parent] | set|ID|field|val | get|ID|field | attach|FRAME|ID... | detach|FRAME|ID | list | layout|FRAME | dock|PANE | switch|PANE | render[|BOX | ppm|PATH|BOX] | hit|X|Y|BOX | press|ID|0|1 | select|ID|0|1 | close|ID | tween|ID|TARGET|PROP|FROM|TO|DUR|FN | tween|ID|to|V | tween|ID|cancel | tween|list | tweenfn|set|NAME|... | tweenfn|list | frame|once | frame|step|SECS | frame|fps|N | ease|FN|T...\n"); free_parts(p,n); free(substr); return pc+1; }
+        if(!sub){ printf("ui commands: init | kinds|list | new|ID|KIND [parent] [W H] | build|BOX|file|PATH | spec|BOX | set|ID|field|val | get|ID|field | attach|FRAME|ID... | detach|FRAME|ID | list | layout|FRAME | dock|PANE | switch|PANE | render[|BOX] | ppm|PATH|BOX] | hit|X|Y|BOX | press|ID|0|1 | select|ID|0|1 | close|ID | pointer|X|Y|ACTION[BUTTON][BOX] | key|KEY|ACTION[BOX] | focus|ID[BOX]|next|prev | input|release | mathfn|list | drive|list|off | drive|ID|PROP|... | texture|ID|PATTERN|... | tween|ID|TARGET|PROP|FROM|TO|DUR|FN | tween|ID|to|V | tween|ID|cancel | tween|list | tweenfn|set|NAME|... | tweenfn|list | frame|once | frame|step|SECS | frame|fps|N | ease|FN|T...\n"); free_parts(p,n); free(substr); return pc+1; }
         if(streqi(sub,"init")){
             bx_ui_reset(); printf("ui: init ok\n"); fflush(stdout);
         }
@@ -1251,6 +1269,48 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
             bx_ui_element_t *e=bx_ui_find(p[0]);
             if(!e) fprintf(stderr,"ui layout: no frame %s\n",p[0]);
             else { bx_ui_layout_apply(p[0]); printf("ui: layout applied to %s (%d children)\n",p[0],e->child_count); fflush(stdout); }
+        }
+        else if((streqi(fam,"build") || streqi(fam,"spec")) && n>=1){
+            /* build reads a spec; spec writes one back. Both take a box name,
+             * and "file PATH" reads from disk, so a spec does not have to live
+             * in a variable to be built. */
+            char err[160] = {0};
+            char *text = NULL;
+            int is_build = streqi(fam,"build");
+            if (streqi(p[0],"file") && n>=2) {
+                FILE *fp = fopen(p[1],"rb");
+                if (!fp) { fprintf(stderr,"ui %s: cannot read %s\n",fam,p[1]); return 0; }
+                fseek(fp,0,SEEK_END); long sz=ftell(fp); fseek(fp,0,SEEK_SET);
+                if (sz<0 || sz>(long)BX_UI_SPEC_MAX) { fclose(fp);
+                    fprintf(stderr,"ui %s: %s is %ld bytes, limit is %d\n",fam,p[1],sz,BX_UI_SPEC_MAX); return 0; }
+                text = (char*)malloc((size_t)sz+1);
+                if (!text) { fclose(fp); fprintf(stderr,"ui %s: out of memory\n",fam); return 0; }
+                size_t got = fread(text,1,(size_t)sz,fp);
+                text[got] = 0;
+                fclose(fp);
+            } else {
+                text = xstrdup(box_get(&pr->boxes, p[0]));
+            }
+            if (!text) { fprintf(stderr,"ui %s: no spec in box '%s'\n",fam,p[0]); return 0; }
+            if (is_build) {
+                int made = bx_ui_build(text, err, sizeof err);
+                if (made < 0) fprintf(stderr,"ui build: %s\n", err[0] ? err : "failed");
+                else printf("ui: built %d element(s)\n", made);
+            } else {
+                /* Dump into a box when one is named, so a script can rebuild
+                 * from it; print it when the name is "-" or absent, because
+                 * a spec is also worth reading. */
+                static char dump[65536];
+                int n_lines = bx_ui_spec_dump(dump, sizeof dump);
+                if (n >= 2 || (n >= 1 && strcmp(p[0], "-"))) {
+                    char *nm = resolve(&pr->boxes, p[0]);
+                    box_set(&pr->boxes, nm, dump);
+                    free(nm);
+                } else printf("%s", dump);
+                fprintf(stderr,"ui: spec of %d element(s)\n", n_lines);
+            }
+            free(text);
+            fflush(stdout);
         }
         else if(streqi(fam,"dock") && n>=1){
             bx_ui_element_t *e=bx_ui_find(p[0]);

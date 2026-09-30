@@ -450,6 +450,20 @@ int bx_ui_set_field(bx_ui_element_t *e, const char *field, const char *value);
 int bx_ui_get_field(const bx_ui_element_t *e, const char *field, char *buf, size_t cap);
 const char *bx_ui_config_get(const bx_ui_element_t *e, const char *key);
 
+/* ---------------------------------------------------------- element builder */
+
+/* Build elements from a spec: one line per element, id= and kind= to create,
+ * every other key=value is a field set through bx_ui_set_field. Returns the
+ * number created, or -1 with err set. */
+int bx_ui_build(const char *text, char *err, size_t errcap);
+/* Write the tree back as a spec. What this prints, bx_ui_build reads. */
+int bx_ui_spec_dump(char *out, size_t cap);
+#define BX_UI_SPEC_MAX 65536
+/* A spec value may be any field a ui set accepts, and the longest of those is
+ * an element's text, so the buffer is sized to text rather than to a config
+ * slot: quoting and re-parsing must not truncate what was written. */
+#define BX_UI_VALUE_MAX 128
+
 /* --------------------------------------------------------------- render */
 /* Draw the tree into a framebuffer. Returns how many elements were drawn.
  * The framebuffer must already be the right size; ui render clears nothing,

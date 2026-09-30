@@ -493,9 +493,9 @@ jump uicheck|m
 premark ui_group_center
 ui.get|dmid|x|gmx
 ui.get|dmid|w|gmw
-box ui_name|a center-docked pane is centered in what the edges left
+box ui_name|a center-docked pane is centered in what the edges left, not the frame
 box ui_got|$gmx/$gmw
-box ui_want|25/150
+box ui_want|50/150
 box ui_next|ui_group_bottom
 jump uicheck|m
 
@@ -505,6 +505,136 @@ ui.get|dbot|h|dbh
 box ui_name|a bottom-docked pane sits at the far edge, below the top bar
 box ui_got|$dby/$dbh
 box ui_want|90/30
+box ui_next|ui_group_right
+jump uicheck|m
+
+// Right and bottom panes walk inwards from their edge, so two on the same edge
+// stack instead of both claiming the outermost slot.
+premark ui_group_right
+ui.init
+ui.new|rf|frame|200|120
+ui.new|r1|pane|rf
+ui.set|r1|dock|right
+ui.new|r2|pane|rf
+ui.set|r2|dock|right
+ui.new|bc|pane|rf
+ui.set|bc|dock|bottom
+ui.new|tc|pane|rf
+ui.set|tc|dock|top
+ui.layout|rf
+ui.get|r1|x|r1x
+ui.get|r2|x|r2x
+box ui_name|two right-docked panes stack inward instead of overlapping
+box ui_got|$r1x/$r2x
+box ui_want|175/150
+box ui_next|ui_group_bottom2
+jump uicheck|m
+
+premark ui_group_bottom2
+ui.get|tc|y|tcy
+ui.get|bc|y|bcy
+box ui_name|a top pane sits above a bottom pane, both on their own edge
+box ui_got|$tcy/$bcy
+box ui_want|0/90
+box ui_next|ui_group_mixed
+jump uicheck|m
+
+// A sized pane keeps the width it asked for, and an unsized one beside it takes
+// a quarter of the frame rather than half of what the sized one already has.
+premark ui_group_mixed
+ui.init
+ui.new|mf|frame|200|120
+ui.new|msized|pane|mf
+ui.set|msized|dock|left
+ui.set|msized|w|100
+ui.new|mfree|pane|mf
+ui.set|mfree|dock|left
+ui.layout|mf
+ui.get|msized|w|m1
+ui.get|mfree|w|m2
+ui.get|mfree|x|m3
+box ui_name|a sized pane keeps its width and an unsized one takes a quarter
+box ui_got|$m1/$m2/$m3
+box ui_want|100/50/100
+box ui_next|ui_group_split
+jump uicheck|m
+
+// Two unsized panes on one edge split a single quarter between them, so the
+// edge takes a quarter in total rather than two.
+premark ui_group_split
+ui.init
+ui.new|sf2|frame|200|120
+ui.new|s1|pane|sf2
+ui.set|s1|dock|left
+ui.new|s2|pane|sf2
+ui.set|s2|dock|left
+ui.layout|sf2
+ui.get|s1|w|q1
+ui.get|s2|w|q2
+box ui_name|two unsized panes split one quarter of the edge between them
+box ui_got|$q1/$q2
+box ui_want|25/25
+box ui_next|ui_spec_build
+jump uicheck|m
+
+// ------------------------------------------------------------- spec builder
+// A spec is the same fields as ui set, one per line, with id= and kind= to
+// create the element. Building, dumping and rebuilding must land on the same
+// geometry, or a dump is not a spec.
+
+premark ui_spec_build
+ui.init
+// A spec is one element per line, so it is written to a file: a box holds a
+// single line and there is no way to spell a newline inside one.
+file|sf|open|.build/uspec.txt|w
+file|n|writeline|$sf|# a spec can be commented like a .bx file
+file|n|writeline|$sf|id=root kind=frame w=320 h=200
+file|n|writeline|$sf|id=side kind=pane parent=root dock=left w=90
+file|n|writeline|$sf|id=hd kind=header parent=root dock=top h=28
+file|n|writeline|$sf|id=ok kind=button parent=root text="Save changes" w=90 h=26
+file|n|writeline|$sf|id=weird kind=nonesuch parent=root text=hi
+file|sf|close|$sf
+ui.build|file|.build/uspec.txt
+ui.layout|root
+ui.get|side|w|sbw
+ui.get|hd|h|hdh
+ui.get|ok|text|okt
+ui.get|ok|parent|okp
+box ui_name|a spec builds elements, parents and quoted text
+box ui_got|$sbw/$hdh/[$okt]/$okp
+box ui_want|90/28/[Save changes]/root
+box ui_next|ui_spec_unknown
+jump uicheck|m
+
+premark ui_spec_unknown
+ui.get|weird|text|wt
+ui.get|weird|kind|wk
+box ui_name|an unknown kind still builds, as a container holding its fields
+box ui_got|$wt/$wk
+box ui_want|hi/custom
+box ui_next|ui_spec_roundtrip
+jump uicheck|m
+
+premark ui_spec_roundtrip
+ui.spec|dump
+ui.init
+ui.build|dump
+ui.layout|root
+ui.get|ok|w|rw
+ui.get|hd|x|rx
+ui.get|ok|text|rt
+box ui_name|dumping and rebuilding a spec lands on the same tree
+box ui_got|$rw/$rx/[$rt]
+box ui_want|90/90/[Save changes]
+box ui_next|ui_spec_get
+jump uicheck|m
+
+premark ui_spec_get
+ui.get|root|align|al
+ui.get|root|layout|ly
+box ui_name|align and layout read back by name
+box ui_got|$al/$ly
+box ui_want|start/none
 box ui_next|ui_input
 jump uicheck|m
 

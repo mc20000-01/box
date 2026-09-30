@@ -574,99 +574,130 @@ int bx_ui_layout_apply(const char *frame_id) {
 static void ui_dock_children(bx_ui_element_t *f) {
     if (!f || f->child_count == 0) return;
 
-    int nleft = 0, nright = 0, ntop = 0, nbottom = 0, nfill = 0, ncenter = 0;
+    float aw = f->w - 2 * f->pad_x;
+    float ah = f->h - 2 * f->pad_y;
+    if (aw < 0) aw = 0;
+    if (ah < 0) ah = 0;
+
+    /* Count the panes on each edge and how much thickness they already asked
+     * for. An edge's total is what its panes asked for, plus a quarter of the
+     * frame for each pane that asked for nothing: so two unsized sidebars
+     * share one quarter, and a sized one keeps its size without stealing the
+     * unsized one's share from it. */
+    int nl = 0, nr = 0, nt = 0, nb = 0, nf = 0, nc = 0;
+    int free_l = 0, free_r = 0, free_t = 0, free_b = 0;
     float wl = 0, wr = 0, ht = 0, hb = 0;
     for (int i = 0; i < f->child_count; i++) {
         bx_ui_element_t *c = bx_ui_find(f->children[i]);
         if (!c || !c->visible) continue;
         switch (c->dock) {
-            case BX_UI_DOCK_LEFT:   nleft++;   wl += c->w > 0 ? c->w : 0; break;
-            case BX_UI_DOCK_RIGHT:  nright++;  wr += c->w > 0 ? c->w : 0; break;
-            case BX_UI_DOCK_TOP:    ntop++;    ht += c->h > 0 ? c->h : 0; break;
-            case BX_UI_DOCK_BOTTOM: nbottom++; hb += c->h > 0 ? c->h : 0; break;
-            case BX_UI_DOCK_FILL:   nfill++;   break;
-            case BX_UI_DOCK_CENTER: ncenter++; break;
-            default: break;                       /* NONE keeps its rect */
+            case BX_UI_DOCK_LEFT:
+                nl++;
+                if (c->w > 0) wl += c->w; else free_l++;
+                break;
+            case BX_UI_DOCK_RIGHT:
+                nr++;
+                if (c->w > 0) wr += c->w; else free_r++;
+                break;
+            case BX_UI_DOCK_TOP:
+                nt++;
+                if (c->h > 0) ht += c->h; else free_t++;
+                break;
+            case BX_UI_DOCK_BOTTOM:
+                nb++;
+                if (c->h > 0) hb += c->h; else free_b++;
+                break;
+            case BX_UI_DOCK_FILL:   nf++; break;
+            case BX_UI_DOCK_CENTER: nc++; break;
+            default: break;                      /* NONE keeps its rect */
         }
     }
-    /* An edge with panes on it but no thickness yet takes a quarter of the
-     * frame, split between them. */
-    float aw = f->w - 2 * f->pad_x;
-    float ah = f->h - 2 * f->pad_y;
-    if (nleft && wl <= 0) wl = aw * 0.25f;
-    if (nright && wr <= 0) wr = aw * 0.25f;
-    if (ntop && ht <= 0) ht = ah * 0.25f;
-    if (nbottom && hb <= 0) hb = ah * 0.25f;
+    /* An edge with free panes on it gets a quarter of the frame, shared
+     * between those panes. So two unsized sidebars each take an eighth and
+     * the edge takes a quarter in total. Dividing the edge total by the number
+     * of panes on it instead would overpay: with a sized and an unsized pane
+     * side by side, the unsized one would claim half of the sized one's width
+     * as well as its own share. */
+    float sh_l = free_l ? aw * 0.25f / (float)free_l : 0;
+    float sh_r = free_r ? aw * 0.25f / (float)free_r : 0;
+    float sh_t = free_t ? ah * 0.25f / (float)free_t : 0;
+    float sh_b = free_b ? ah * 0.25f / (float)free_b : 0;
+    if (free_l) wl += sh_l * (float)free_l;
+    if (free_r) wr += sh_r * (float)free_r;
+    if (free_t) ht += sh_t * (float)free_t;
+    if (free_b) hb += sh_b * (float)free_b;
+    /* More edge than frame: the centre gets nothing rather than a negative
+     * width, and the edges keep what they asked for. */
+    if (wl > aw) wl = aw;
+    if (wr > aw) wr = aw;
+    if (ht > ah) ht = ah;
+    if (hb > ah) hb = ah;
 
     float x = f->pad_x;
     float y = f->pad_y;
-    float cw = aw - wl - wr;
+    float cw = aw - wl - wr;      /* the centre region */
     float ch = ah - ht - hb;
     if (cw < 0) cw = 0;
     if (ch < 0) ch = 0;
 
-    int il = 0, ir = 0, it = 0, ib = 0, ifill = 0, icenter = 0;
+    /* Right and bottom walk inwards from their edge, which is why they need
+     * their own cursors rather than the shared x and y. */
+    float rx = f->pad_x + aw;
+    float by = f->pad_y + ah;
+
     for (int i = 0; i < f->child_count; i++) {
         bx_ui_element_t *c = bx_ui_find(f->children[i]);
         if (!c || !c->visible) continue;
         switch (c->dock) {
-            case BX_UI_DOCK_LEFT: {
-                /* The edge is shared, so a pane with no width takes an equal
-                 * share rather than the whole edge. */
-                float share = wl / (float)nleft;
-                c->w = c->w > 0 ? c->w : share;
-                c->x = x; c->y = y; c->h = ah;
+            case BX_UI_DOCK_LEFT:
+                if (c->w <= 0) c->w = sh_l;
+                if (c->w > wl) c->w = wl;
+                c->x = x; c->y = f->pad_y; c->h = ah;
                 x += c->w;
-                il++;
                 break;
-            }
-            case BX_UI_DOCK_RIGHT: {
-                float share = wr / (float)nright;
-                c->w = c->w > 0 ? c->w : share;
-                c->x = f->pad_x + aw - c->w; c->y = y; c->h = ah;
-                ir++;
+            case BX_UI_DOCK_RIGHT:
+                if (c->w <= 0) c->w = sh_r;
+                if (c->w > wr) c->w = wr;
+                rx -= c->w;
+                c->x = rx; c->y = f->pad_y; c->h = ah;
                 break;
-            }
-            case BX_UI_DOCK_TOP: {
-                float share = ht / (float)ntop;
-                c->h = c->h > 0 ? c->h : share;
+            case BX_UI_DOCK_TOP:
+                if (c->h <= 0) c->h = sh_t;
+                if (c->h > ht) c->h = ht;
                 c->x = x; c->y = y; c->w = cw;
                 y += c->h;
-                it++;
                 break;
-            }
-            case BX_UI_DOCK_BOTTOM: {
-                float share = hb / (float)nbottom;
-                c->h = c->h > 0 ? c->h : share;
-                c->x = x; c->y = f->pad_y + ah - c->h; c->w = cw;
-                ib++;
+            case BX_UI_DOCK_BOTTOM:
+                if (c->h <= 0) c->h = sh_b;
+                if (c->h > hb) c->h = hb;
+                by -= c->h;
+                c->x = x; c->y = by; c->w = cw;
                 break;
-            }
             case BX_UI_DOCK_FILL: {
-                float share = cw / (float)(nfill > 0 ? nfill : 1);
-                if (nfill > 1 && share > 0) { c->x = x; c->w = share; x += share; }
-                else c->w = cw;
-                c->x = c->x > 0 ? c->x : x;
+                /* Fill panes share the centre region in order. */
+                float share = cw / (float)(nf > 0 ? nf : 1);
+                c->w = share;
+                c->x = x;
                 c->y = y; c->h = ch;
-                ifill++;
+                x += share;
                 break;
             }
             case BX_UI_DOCK_CENTER: {
-                /* Centered in what is left, at the pane's own size when it
-                 * has one and filling the rest when it does not. */
-                float share = cw / (float)ncenter;
+                /* Centered in the region the edges left, not in the whole
+                 * frame: a centred dialog must not sit under the toolbar. */
+                float share = cw / (float)(nc > 0 ? nc : 1);
                 float bw = c->w > 0 ? c->w : share;
                 float bh = c->h > 0 ? c->h : ch;
+                if (bw > cw) bw = cw;
+                if (bh > ch) bh = ch;
                 c->w = bw; c->h = bh;
-                c->x = f->pad_x + (aw - bw) / 2.0f;
-                c->y = f->pad_y + (ah - bh) / 2.0f;
-                icenter++;
+                c->x = f->pad_x + wl + (cw - bw) / 2.0f;
+                c->y = f->pad_y + ht + (ch - bh) / 2.0f;
                 break;
             }
-            default: break;
+            default: break;                      /* NONE keeps its rect */
         }
     }
-    (void)il; (void)ir; (void)it; (void)ib; (void)ifill; (void)icenter;
 }
 
 static int ui_layout_here(bx_ui_element_t *f) {
@@ -1386,6 +1417,30 @@ int bx_ui_get_field(const bx_ui_element_t *e, const char *field, char *buf, size
         const char *m = e->material==BX_UI_MAT_GLASS?"glass":e->material==BX_UI_MAT_FLAT?"flat":"matte";
         snprintf(buf,cap,"%s",m);
     }
+    else if (!strcmp(field,"align")) {
+        /* One field back for both axes, because that is how they are set. When
+         * they disagree, report the horizontal one, which is the one the
+         * layout reads first. */
+        const char *an[]={"start","center","end","stretch"};
+        snprintf(buf,cap,"%s",(e->align_h>=0&&e->align_h<=3)?an[e->align_h]:"start");
+    }
+    else if (!strcmp(field,"alignh")) {
+        const char *an[]={"start","center","end","stretch"};
+        snprintf(buf,cap,"%s",(e->align_h>=0&&e->align_h<=3)?an[e->align_h]:"start");
+    }
+    else if (!strcmp(field,"alignv")) {
+        const char *an[]={"start","center","end","stretch"};
+        snprintf(buf,cap,"%s",(e->align_v>=0&&e->align_v<=3)?an[e->align_v]:"start");
+    }
+    else if (!strcmp(field,"justify")) {
+        const char *jn[]={"start","center","end","stretch"};
+        snprintf(buf,cap,"%s",(e->justify>=0&&e->justify<=3)?jn[e->justify]:"start");
+    }
+    else if (!strcmp(field,"layout")) {
+        static const char *ln[]={"none","row","column","grid","stack"};
+        snprintf(buf,cap,"%s",(e->layout>=0&&e->layout<=4)?ln[e->layout]:"none");
+    }
+    else if (!strcmp(field,"visible")) snprintf(buf,cap,"%d",e->visible?1:0);
     else if (!strcmp(field,"dock")) {
         static const char *dn[]={"none","left","right","top","bottom","center","fill"};
         snprintf(buf,cap,"%s",(e->dock>=0&&e->dock<=6)?dn[e->dock]:"none");
@@ -1984,4 +2039,263 @@ int bx_ui_key(int key, const char *action) {
         return 1;
     }
     return 0;
+}
+
+/* ---------------------------------------------------------- element builder */
+
+/* One line of a spec. Each line creates an element and sets its fields, or
+ * sets fields on one that already exists:
+ *
+ *   id=root kind=frame w=200 h=120
+ *   id=side kind=pane  parent=root dock=left w=120
+ *   set id=ok x=20 y=40 text=Save
+ *
+ * Every key=value goes through bx_ui_set_field, so a spec can set anything a
+ * ui set can, including a field this layer has never heard of, which lands in
+ * the config bag and reads back. A spec is not a second way to describe an
+ * element; it is the same description with the words "id=" in front.
+ *
+ * Blank lines and lines starting with # are skipped, so a spec can be commented
+ * the way a .bx file is.
+ */
+static char *ui_dup(const char *s) {
+    size_t n = strlen(s) + 1;
+    char *p = (char *)malloc(n);
+    if (p) memcpy(p, s, n);
+    return p;
+}
+
+/* One spec line, broken into key=value pairs before anything is created.
+ * Two passes over these is what lets a line read in any order: parent= may
+ * come before the parent exists on the previous line, and fields are applied
+ * only once every element in the spec has been created. */
+#define UI_SPEC_MAX_FIELDS 32
+typedef struct {
+    char key[32];
+    char val[BX_UI_VALUE_MAX];
+} ui_spec_field_t;
+
+typedef struct {
+    char id[BX_UI_ID_MAX];
+    char kind[40];
+    char parent[BX_UI_ID_MAX];
+    ui_spec_field_t f[UI_SPEC_MAX_FIELDS];
+    int nf;
+    int update;              /* "set" line: never creates an element */
+} ui_spec_line_t;
+
+static void ui_spec_value_trim(char *v) {
+    size_t n = strlen(v);
+    if (n >= 2 && ((v[0] == '"' && v[n - 1] == '"') ||
+                   (v[0] == '\'' && v[n - 1] == '\''))) {
+        memmove(v, v + 1, n - 2);
+        v[n - 2] = 0;
+    }
+}
+
+/* Split a line into fields. Whitespace separates; a quoted value may contain
+ * spaces, which is how a label with a space in it survives a round trip. */
+static void ui_spec_split(char *line, ui_spec_line_t *out) {
+    memset(out, 0, sizeof *out);
+    char *p = line;
+    while (*p) {
+        while (*p == ' ' || *p == '\t' || *p == ',') p++;
+        if (!*p || *p == '#') break;
+        char key[32] = {0};
+        int ki = 0;
+        while (*p && *p != '=' && *p != ' ' && *p != '\t' && *p != ',' &&
+               ki < (int)sizeof key - 1) key[ki++] = *p++;
+        key[ki] = 0;
+        if (*p == '=') p++;
+        char val[BX_UI_VALUE_MAX];
+        size_t vi = 0;
+        if (*p == '"' || *p == '\'') {
+            char q = *p++;
+            while (*p && *p != q && vi + 1 < sizeof val) val[vi++] = *p++;
+            if (*p == q) p++;
+        } else {
+            while (*p && *p != ' ' && *p != '\t' && *p != ',' && *p != '#' &&
+                   vi + 1 < sizeof val) val[vi++] = *p++;
+        }
+        val[vi] = 0;
+        if (!key[0]) continue;
+        ui_spec_value_trim(val);
+        if (!strcmp(key, "id")) copy_id(out->id, val);
+        else if (!strcmp(key, "kind")) snprintf(out->kind, sizeof out->kind, "%s", val);
+        else if (!strcmp(key, "parent")) copy_id(out->parent, val);
+        else if (out->nf < UI_SPEC_MAX_FIELDS) {
+            snprintf(out->f[out->nf].key, sizeof out->f->key, "%s", key);
+            snprintf(out->f[out->nf].val, sizeof out->f->val, "%s", val);
+            out->nf++;
+        }
+    }
+}
+
+/* A value needs quoting when it would not survive a round trip: whitespace, a
+ * comma, a quote, or a trailing # all end a bare field early. */
+static int ui_spec_needs_quote(const char *v) {
+    if (!*v) return 1;
+    for (const char *p = v; *p; p++) {
+        if (*p == ' ' || *p == '\t' || *p == ',' || *p == '"' || *p == '\'' ||
+            *p == '#' || *p == '=')
+            return 1;
+    }
+    return 0;
+}
+
+int bx_ui_build(const char *text, char *err, size_t errcap) {
+    if (!text) return -1;
+    if (err && errcap) err[0] = 0;
+
+    /* Pass one splits every line; pass two creates; pass three applies. */
+    int cap = 16, nlines = 0;
+    ui_spec_line_t *lines = (ui_spec_line_t *)calloc((size_t)cap, sizeof *lines);
+    char *copy = ui_dup(text);
+    if (!lines || !copy) { free(lines); free(copy); return -1; }
+
+    char *line = copy;
+    while (line && *line) {
+        char *nl = strchr(line, '\n');
+        if (nl) *nl = 0;
+        char *next = nl ? nl + 1 : NULL;
+        char *t = line;
+        while (*t == ' ' || *t == '\t') t++;
+        if (*t && *t != '#') {
+            /* "set" edits an element that already exists, without creating
+             * one. A line that only says "set" is a no-op, not an error. */
+            if (!strncmp(t, "set ", 4) || !strncmp(t, "set\t", 4)) {
+                t += 3;
+                while (*t == ' ' || *t == '\t') t++;
+            }
+            if (*t) {
+                if (nlines >= cap) {
+                    cap *= 2;
+                    ui_spec_line_t *bigger =
+                        (ui_spec_line_t *)realloc(lines, (size_t)cap * sizeof *lines);
+                    if (!bigger) {
+                        if (err) snprintf(err, errcap, "out of memory");
+                        free(lines); free(copy);
+                        return -1;
+                    }
+                    lines = bigger;
+                }
+                ui_spec_split(t, &lines[nlines]);
+                lines[nlines].update = (lines[nlines].kind[0] == 0);
+                nlines++;
+            }
+        }
+        line = next;
+    }
+
+    /* Create every element first, so a parent may be declared after a child
+     * references it. bx_ui_add attaches to the parent if it already exists, so
+     * the second loop picks up the ones that did not. */
+    int made = 0;
+    for (int i = 0; i < nlines; i++) {
+        ui_spec_line_t *L = &lines[i];
+        if (L->update || !L->id[0] || !L->kind[0]) continue;
+        int k = bx_ui_kind_by_name(L->kind);
+        bx_ui_element_t *e = bx_ui_add(L->id,
+                k >= 0 ? (bx_ui_kind_t)k : BX_UI_KIND_CUSTOM, L->parent);
+        if (!e) {
+            if (err) snprintf(err, errcap, "cannot create '%s'", L->id);
+            free(lines); free(copy);
+            return -1;
+        }
+        /* An unknown kind becomes a container that holds fields, so a spec can
+         * describe an element this build has never heard of and still get it
+         * onto the tree. */
+        if (k < 0) { e->layout = BX_UI_LAYOUT_COLUMN; e->pad_x = 8; e->pad_y = 8; e->gap = 6; }
+        made++;
+    }
+    for (int i = 0; i < nlines; i++) {
+        ui_spec_line_t *L = &lines[i];
+        if (L->parent[0] && L->id[0]) {
+            bx_ui_element_t *par = bx_ui_find(L->parent);
+            bx_ui_element_t *e = bx_ui_find(L->id);
+            if (par && e && !e->parent[0]) {
+                copy_id(e->parent, L->parent);
+                bx_ui_child_add(par, e->id);
+            }
+        }
+    }
+
+    /* Apply fields last, in spec order. */
+    for (int i = 0; i < nlines; i++) {
+        ui_spec_line_t *L = &lines[i];
+        if (!L->id[0]) continue;
+        bx_ui_element_t *e = bx_ui_find(L->id);
+        if (!e) {
+            if (err) snprintf(err, errcap, "no element '%s'", L->id);
+            free(lines); free(copy);
+            return -1;
+        }
+        for (int j = 0; j < L->nf; j++)
+            bx_ui_set_field(e, L->f[j].key, L->f[j].val);
+    }
+
+    free(lines);
+    free(copy);
+    return made;
+}
+
+/* Fields worth writing out. A value equal to the kind's default is left out,
+ * so a dump is readable and rebuilding it does not depend on defaults holding. */
+static const char *g_spec_keys[] = {
+    "x", "y", "w", "h", "minw", "minh", "text", "value", "style", "color",
+    "radius", "dock", "layout", "align", "justify", "gap", "padx", "pady",
+    "columns", "z", "alpha", "material", "selected"
+};
+
+int bx_ui_spec_dump(char *out, size_t cap) {
+    if (!out || cap == 0) return 0;
+    size_t n = 0;
+    int lines = 0;
+    for (int i = 0; i < g_bx_ui.count; i++) {
+        bx_ui_element_t *e = &g_bx_ui.els[i];
+        if (!e->id[0]) continue;
+        /* An element must exist before its parent does, or a rebuild cannot
+         * attach it: dump creation order, which is the order they were made. */
+        if (e->parent[0] && !bx_ui_find(e->parent)) continue;
+        int w = snprintf(out + n, cap - n, "id=%s kind=%s", e->id, bx_ui_kind_name(e->kind));
+        if (w < 0) break;
+        n += (size_t)w;
+        lines++;
+        for (unsigned k = 0; k < sizeof g_spec_keys / sizeof *g_spec_keys; k++) {
+            char v[BX_UI_VALUE_MAX];
+            if (bx_ui_get_field(e, g_spec_keys[k], v, sizeof v) != 0) continue;
+            if (!v[0]) continue;
+            /* Leave out anything still at its default: a dump that repeats
+             * every field is noise, and one that has to be read against a
+             * default table is worse than one that is simply short. Layout
+             * results are not defaults, though, so they stay. */
+            if (!strcmp(v,"0") || !strcmp(v,"none") || !strcmp(v,"start") ||
+                !strcmp(v,"matte") || !strcmp(v,"1") ||
+                !strcmp(v,"0x00000000"))
+                continue;
+            if (ui_spec_needs_quote(v))
+                w = snprintf(out + n, cap - n, " %s=\"%s\"", g_spec_keys[k], v);
+            else
+                w = snprintf(out + n, cap - n, " %s=%s", g_spec_keys[k], v);
+            if (w < 0) break;
+            n += (size_t)w;
+            if (n + 64 >= cap) { out[n] = 0; return lines; }
+        }
+        if (e->parent[0]) {
+            w = snprintf(out + n, cap - n, " parent=%s", e->parent);
+            if (w > 0) n += (size_t)w;
+        }
+        for (int c = 0; c < e->config_count; c++) {
+            if (n + 96 >= cap) { out[n] = 0; return lines; }
+            if (ui_spec_needs_quote(e->config_val[c]))
+                w = snprintf(out + n, cap - n, " %s=\"%s\"", e->config_key[c], e->config_val[c]);
+            else
+                w = snprintf(out + n, cap - n, " %s=%s", e->config_key[c], e->config_val[c]);
+            if (w > 0) n += (size_t)w;
+        }
+        if (n + 2 >= cap) break;
+        out[n++] = '\n';
+    }
+    out[n] = 0;
+    return lines;
 }
