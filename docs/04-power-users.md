@@ -1,6 +1,6 @@
 # Power User Tricks
 
-## CHAPTER 7: ADVANCED TRICKS FOR POWER USERS
+## ADVANCED TRICKS FOR POWER USERS
 
 * **Deleting Boxes:** Keep your computer's memory tidy! Use `del NAME` to completely erase a box you no longer need. Asking for a box that was never created, or that you deleted, gives you an empty string instead of an error.
 
@@ -95,6 +95,8 @@ Beyond the core commands, BX ships three runtime facility groups. They follow th
   * `low.*` is always available: `low.arch`, `low.env`, `low.tick|box` (monotonic nanoseconds), `low.pid|box`.
 
 ### The GFX library
+
+The full family list is in [Libraries](07-libraries.md), and the window system built on top of it is in [The UI Layer](08-ui.md).
 
 `lib load|gfx` turns on a themed UI element tree. Elements are identified by a `uint32` id; pass `0` as the id to have one assigned, and the box you name is set to the real id. Note that the subcommand is part of the command token, so it is spelled `high.gfx.new`, not `high.gfx new`.
 

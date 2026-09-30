@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The UI Layer - BoxedLANG docs</title>
+<meta name="description" content="The UI Layer">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<nav class="top">
+    <div class="inner">
+        <a class="brand" href="../index.html"><span class="sq">BX</span>BoxedLANG</a>
+                <a class="nav" href="../index.html">Home</a>
+        <a class="nav active" href="../docs/index.html">Docs</a>
+        <a class="nav" href="../packages.html">Packages</a>
+        <a class="nav" href="../install.html">Install</a>
+        <span class="spacer"></span>
+        <a class="nav" href="https://github.com/mc20000-01/boxed" rel="noopener">GitHub</a>
+    </div>
+</nav>
+<main class="wrap">
+<div class="docs"><nav class="side">
+    <p class="side-t">Manual</p>
+    <ul>
+        <li><a class="" href="getting-started.html">Getting Started</a></li>
+        <li><a class="" href="math-and-logic.html">Math and Logic</a></li>
+        <li><a class="" href="flow-control.html">Jumping Around: Flow Control</a></li>
+        <li><a class="" href="power-users.html">Power User Tricks</a></li>
+        <li><a class="" href="command-line.html">Driving bx From Your Shell</a></li>
+        <li><a class="" href="compiling.html">Implementations and Compile Targets</a></li>
+        <li><a class="" href="libraries.html">Libraries</a></li>
+        <li><a class="on" href="ui.html">The UI Layer</a></li>
+    </ul>
+    <p class="side-f">
+        <a href="index.html">All chapters</a> &middot; 
+        <a href="https://github.com/mc20000-01/boxed" rel="noopener">source</a>
+    </p>
+</nav>
+<div class="doc">
+<h1 id="the-ui-layer">The UI Layer</h1>
+<p><code>high.gfx.*</code> (see <a href="libraries.html">Libraries</a>) can draw a rectangle. That is enough for a chart and not enough for a program with a toolbar, so the UI layer sits on top of it and decides where things go and how they move.</p>
+<p>The UI layer is a window system, not a web page. It has frames that own other elements, panes that dock to an edge, and tweens that are objects rather than one-shot calls. <code>src/bx_ui.c</code> implements it; the commands below are the whole surface.</p>
+<h2 id="two-spellings">TWO SPELLINGS</h2>
+<p>Every command answers to two forms, and they mean the same thing:</p>
+<pre><code class="language-bx">ui.new|sidebar|pane|root
+</code></pre>
+<p>The dotted form reads like the rest of the libraries. The bar form reads like a script, where <code>|</code> separates arguments anyway. Use whichever is clearer in the line you are writing.</p>
+<h2 id="elements-have-names">ELEMENTS HAVE NAMES</h2>
+<p>An element is identified by a string id, not by a number.</p>
+<pre><code class="language-bx">ui.init
+ui.new|root|frame
+ui.new|title|label|root
+ui.set|title|text|BoxedLANG
+ui.get|title|text|now
+say $now
+</code></pre>
+<p>Names may use letters, digits, and <code>_</code>, <code>.</code>, and <code>-</code>, up to 31 characters. An id is interned on first use, which means <code>ui.new</code> with an id that already exists is <em>refused</em> instead of quietly making a second element with the same name:</p>
+<pre><code class="language-text">ui new: bad id 'title' (max 31 chars, a-zA-Z0-9_.-) or id already exists
+</code></pre>
+<p>That is deliberate. In a window system, two elements answering to the same name is not a feature; it is a bug that shows up later as the wrong thing moving.</p>
+<p>The element kinds are <code>frame</code>, <code>pane</code>, <code>panel</code>, <code>button</code>, <code>label</code>, <code>text</code>, <code>textbox</code>, <code>slider</code>, <code>checkbox</code>, <code>radio</code>, <code>dropdown</code>, <code>image</code>, <code>icon</code>, <code>shape</code>, <code>list</code>, <code>listitem</code>, <code>tabs</code>, <code>tab</code>, <code>split</code>, <code>scroll</code>, <code>grid</code>, <code>stack</code>, <code>progress</code>, <code>spinner</code>, <code>canvas</code>, <code>tree</code>, <code>menu</code>, <code>menuitem</code>, <code>toolbar</code>, <code>statusbar</code>, <code>sidebar</code>, <code>modal</code>, <code>tooltip</code>, and <code>tween</code>. <code>ui.kinds.list</code> prints the names as the binary knows them.</p>
+<p>Anything the list does not name is still accepted, and becomes a config object: a container with a bag of values that you set and tune like anything else. This is the escape hatch for a look that has no element yet.</p>
+<pre><code class="language-bx">ui.new|theme.accent|my-accent-style
+</code></pre>
+<h2 id="fields">FIELDS</h2>
+<p><code>ui.set|ID|field|value</code> writes a field, <code>ui.get|ID|field|BOX</code> reads one:</p>
+<pre><code class="language-bx">ui.set|title|w|240
+ui.set|title|h|32
+ui.set|title|color|#d7e2ee
+ui.get|title|w|w
+say $w
+</code></pre>
+<p>The geometry fields are <code>x</code>, <code>y</code>, <code>w</code>, and <code>h</code>. <code>minw</code> and <code>minh</code> are floors that a layout will not go below. <code>visible</code> hides an element without removing it. <code>text</code> and <code>value</code> are its two strings. <code>color</code> and <code>alpha</code> describe its fill. <code>gap</code>, <code>padx</code>, and <code>pady</code> are spacing. <code>align</code> and <code>justify</code> place children inside a layout. <code>z</code> decides who is on top. <code>style</code> and <code>theme</code> name a theme, and <code>columns</code> sets the column count for a grid.</p>
+<h2 id="layout">LAYOUT</h2>
+<p>A frame arranges its children according to its <code>layout</code>:</p>
+<p>| Layout | Children are placed | | --- | --- | | <code>none</code> | where their <code>x</code> and <code>y</code> say | | <code>row</code> | left to right | | <code>column</code> | top to bottom | | <code>grid</code> | in a grid of <code>columns</code> columns | | <code>stack</code> | all at the same origin, ordered by <code>z</code> | | <code>wrap</code> | left to right, wrapping at the frame's width |</p>
+<pre><code class="language-bx">ui.set|toolbar|toolbar|layout|row
+ui.set|toolbar|gap|8
+ui.set|toolbar|padx|12
+ui.layout|toolbar
+</code></pre>
+<p><code>ui.layout|FRAME</code> runs the arrangement and prints the result, which makes it easy to see what changed. <code>ui.list</code> shows every element with its geometry, and <code>ui.attach|FRAME|ID...</code> and <code>ui.detach|FRAME|ID</code> change who owns whom.</p>
+<h2 id="docking">DOCKING</h2>
+<p>A pane can dock to an edge instead of taking a position.</p>
+<pre><code class="language-bx">ui.new|sidebar|pane|root
+ui.set|sidebar|w|200
+ui.set|sidebar|dock|left
+ui.dock|sidebar
+</code></pre>
+<p>The docks are <code>none</code>, <code>left</code>, <code>right</code>, <code>top</code>, <code>bottom</code>, <code>center</code>, and <code>fill</code>. A pane sizes itself against its <em>parent frame</em> when it has one, and against the screen when it does not, which is why a sidebar nested in a window is sized by the window rather than by the display.</p>
+<h2 id="frames">FRAMES</h2>
+<p>Time moves in two ways, and the difference matters.</p>
+<p><code>ui.frame.once</code> advances every running tween by the wall clock, using the same fixed step the interpreter uses elsewhere. It is the right choice for a script.</p>
+<pre><code class="language-bx">ui.frame.once
+</code></pre>
+<p><code>ui.frame.step|SECONDS</code> advances by an exact amount instead. That is what makes the tests in <code>tests/ui.bx</code> give the same answer on any machine: a tween of 0.4 seconds is halfway after exactly one 0.2 second step, whether the machine is fast or slow.</p>
+<pre><code class="language-bx">ui.frame.step|0.2
+</code></pre>
+<p><code>ui.frame.fps|N</code> sets the frame rate used by <code>once</code>. Loop <code>frame</code> inside a program that also needs to do other work, and the tweens keep moving without blocking anything.</p>
+<h2 id="tweens">TWEENS</h2>
+<p>A tween changes one property of one element over time, and it is an object you name.</p>
+<pre><code class="language-bx">ui.tween|sl|sidebar|x|0|-200|0.4|ease-out
+ui.frame.step|0.2
+ui.get|sidebar|x|half
+say $half
+</code></pre>
+<p>The form is <code>ui.tween|ID|TARGET|PROP|FROM|TO|DURATION|FN</code>. The id is the tween's name, and two tweens with the same id are the same tween, which is how a moving element stays in one slot instead of drifting into a new one each time it is touched.</p>
+<p>Two shorthands help when a tween is nearly over: <code>ui.tween|ID|to|VALUE</code> finishes it at a new destination, and <code>ui.tween|ID|cancel</code> stops it where it is.</p>
+<p>Retargeting is the behaviour worth knowing. A running tween that gets a new target continues <em>from where it is</em>, not from where it started:</p>
+<pre><code class="language-text">x=-37.854  after one 0.1s step
+x=-124.09  after two
+x=-153.499 after three
+x=-160     after four  (0.4s done)
+x=-39.5183 after retargeting to -40 from x=-160
+</code></pre>
+<p>That is what makes a pane slide follow a drag instead of snapping to the beginning every time the pointer moves.</p>
+<p><code>ui.tween.list</code> shows the running tweens and how far along they are.</p>
+<h2 id="easing">EASING</h2>
+<p>Linear motion looks mechanical, because it is. Everything else is a way of spending time differently.</p>
+<pre><code class="language-bx">ui.tween|sl|sidebar|x|0|-200|0.4|spring
+</code></pre>
+<p>The built-ins are <code>linear</code>, <code>ease-in</code>, <code>ease-out</code>, <code>ease-in-out</code>, <code>spring</code>, and <code>bounce</code>, with <code>ease-in-out</code> as the default. <code>linear</code> is exactly <code>y = mx + b</code>, which is a fine thing to be, since a tween is just a function of time and linear is the first one to write down.</p>
+<p>A new curve is four numbers for a cubic bezier, the same control points CSS and iOS use, or two for a line:</p>
+<pre><code class="language-bx">ui.tweenfn.set|swift|0.25|0.1|0.25|1
+ui.tweenfn.set|ramp|0.5|1
+</code></pre>
+<p><code>ui.tweenfn.list</code> prints what is defined. To look at a curve without running an animation, sample it:</p>
+<pre><code class="language-bx">ui.ease|swift|0.5|half
+say $half
+</code></pre>
+<p>That prints the samples and puts the last one in the box:</p>
+<pre><code class="language-text">ease swift: 0.5-&gt;0.8024
+0.802403
+</code></pre>
+<p>Enough to check that a curve is shaped the way you meant it, before anything moves.</p>
+<h2 id="switching-and-closing">SWITCHING AND CLOSING</h2>
+<p><code>ui.switch|PANE</code> brings a pane to the front. <code>ui.close|ID</code> removes an element and detaches it from its parent, which is why closing a pane leaves its frame's child count correct instead of leaving a hole.</p>
+<h2 id="what-is-not-here-yet">WHAT IS NOT HERE YET</h2>
+<p>The layer computes geometry and motion; it does not yet draw. Wiring <code>ui.*</code> into <code>high.gfx.render</code> so the tree paints itself, adding hit testing so elements can be clicked, and building out the icon set as <code>bxvg</code> documents are all still ahead. What is here now is the part that is awkward to retrofit: names, structure, and time.</p>
+<p class="next"><a href="index.html">All chapters</a></p>
+</div></div>
+</main>
+<footer>
+    BoxedLANG v0.2.0 &middot; <a href="https://github.com/mc20000-01/boxed">source</a> &middot;
+    <a href="https://github.com/mc20000-01/BoxPkg">BoxPkg registry</a>
+</footer>
+</body>
+</html>

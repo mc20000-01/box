@@ -1,6 +1,6 @@
 # Driving bx From Your Shell
 
-## CHAPTER 8: DRIVING BX FROM YOUR SHELL
+## DRIVING BX FROM YOUR SHELL
 
 Everything above is the language. The `bx` program itself is the tool that runs, transpiles, and compiles it.
 

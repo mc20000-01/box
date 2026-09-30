@@ -1,6 +1,6 @@
 # Math and Logic
 
-## CHAPTER 4: COMPUTER MATH
+## COMPUTER MATH
 
 Your computer is a giant calculator, and BX lets you tap into that power using the `math` command! It performs integer arithmetic.
 
@@ -25,7 +25,7 @@ say The sum is $add
 
 ---
 
-## CHAPTER 5: MAKING DECISIONS
+## MAKING DECISIONS
 
 A smart program can make choices! BX does this using **conditions** to compare two values. You can use the following comparison operators:
 

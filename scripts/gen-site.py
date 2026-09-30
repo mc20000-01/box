@@ -248,8 +248,16 @@ def doc_chapters():
 
 
 def rewrite_links(md):
-    """Point .md links at the generated .html pages."""
-    return re.sub(r"\]\(([^)]+)\.md\)", r"](\1.html)", md)
+    """Point .md links at the generated .html pages.
+
+    The source filenames are numbered for reading order in the repo but the
+    URLs are not, so the number is dropped here too.
+    """
+    def sub(m):
+        stem = os.path.basename(m.group(1))
+        return "](" + re.sub(r"^\d+-", "", stem) + ".html)"
+
+    return re.sub(r"\]\(([^)]+)\.md\)", sub, md)
 
 
 def doc_sidebar(chapters, current):

@@ -1,6 +1,6 @@
 # Implementations and Compile Targets
 
-## CHAPTER 9: IMPLEMENTATIONS AND COMPILE TARGETS
+## IMPLEMENTATIONS AND COMPILE TARGETS
 
 BX is a language specification first. A BX program should mean the same thing no matter whether it is run by an interpreter, transpiled into another language, assembled, or compiled straight into a raw binary.
 
@@ -38,10 +38,59 @@ Targets may use different internal representations, but they should not change w
 
 ### Libraries
 
-Three C libraries live in `src/`. The wifi and gfx ones are now reachable from BX programs through the `lib` / `high.*` / `low.*` commands described in Chapter 7, exactly as chapter 3 describes: the same boxes, the same marks, the same jump rules.
+Three C libraries live in `src/`. The wifi and gfx ones are now reachable from BX programs through the `lib` / `high.*` / `low.*` commands described in [Libraries](07-libraries.md), exactly as [Getting Started](01-getting-started.md) describes: the same boxes, the same marks, the same jump rules.
 
-* `src/bx_gfx.c` and `src/bx_gfx.h` implement the themed UI element tree behind the `high.gfx.*` family described in Chapter 7: colors in `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa` form, themes of exactly six ordered tags with `^^` caret inheritance, element creation and lookup by id, and theme push/pop history. `make gfx-tests` covers it.
+* `src/bx_gfx.c` and `src/bx_gfx.h` implement the themed UI element tree behind the `high.gfx.*` family described in [Libraries](07-libraries.md): colors in `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa` form, themes of exactly six ordered tags with `^^` caret inheritance, element creation and lookup by id, and theme push/pop history. `make gfx-tests` covers it.
 * `src/bx_wifi.c` and `src/bx_wifi.h` cover scanning, connecting, and status, with separate paths for native, web/WASM, and bare-metal environments. `lib load|wifi` switches on the `high.wifi.*` family; `low.env` reports which environment the runtime detected.
+
+## COMPILER RULESETS
+
+`bx compile` normally assumes a hosted C toolchain: a compiler that can link against libc and produce a program the operating system will load. That assumption is wrong for a kernel, for a bootloader, and for anything else that runs before libc exists.
+
+A ruleset is a small file that replaces those defaults. It says which compiler to call, what flags to pass, how to link, and what the result should be called.
+
+```bx
+ruleset.md
+name: freestanding-i386
+version: 1.0.0
+description: Bare-metal i386 with an explicit link step
+cc: i686-linux-gnu-gcc
+cflags: -m32 -std=c99 -ffreestanding -nostdlib -nostartfiles -fno-pie -O2 -I.
+ld: i686-linux-gnu-ld
+ldflags: -m elf_i386 -T kernel.ld
+objcopy: i686-linux-gnu-objcopy
+suffix: elf
+
+```
+
+The fields are `cc`, `cflags`, `ld`, `ldflags`, `objcopy`, and `suffix`. `ld` and `ldflags` are optional: a ruleset with only `cc` and `cflags` compiles and links in one step, which is the common case for cross-compiling to another hosted system. `suffix` is the file extension of the output, so the same build can produce `.elf` for one target and `.bin` for another.
+
+Use one with any of the backends:
+
+```text
+bx compile program.bx -o program.elf --ruleset freestanding-i386
+bx asm program.bx -o program.s --ruleset kernel-i386
+bx raw program.bx -o program.bin --ruleset kernel-i386
+
+```
+
+`bx rulesets` lists what can be found, and `bx ruleset NAME` prints one resolved, which is the fastest way to find out where a name came from:
+
+```text
+$ bx ruleset kernel-i386
+ruleset kernel-i386 (./rulesets/kernel-i386.md)
+  name         kernel-i386
+  cflags       -m32 -ffreestanding -nostdlib -nostartfiles ...
+  ldflags      -m elf_i386 -T src/kernel.ld -nostdlib -z max-page-size=0x1000
+  suffix       elf
+
+```
+
+Two directories are searched, in order: `$BOXEDLANG_RULESETS` first, then `./rulesets`, then the current directory. The first wins, so an environment variable can shadow the checked-in ruleset without editing anything. That is how the kernel build overrides a path without touching the file.
+
+Two rulesets ship in the repository. `kernel-i386` is the Multiboot1 kernel the `make kernel` target uses, and `freestanding-i386` is a template with an explicit link step for anyone writing their own bare-metal program.
+
+Without `--ruleset`, nothing changes: the native target still uses `cc` and links the way it always did.
 
 ### Performance
 

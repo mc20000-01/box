@@ -1,6 +1,6 @@
 # Getting Started
 
-## CHAPTER 1: MEET YOUR NEW BEST FRIEND, THE BOX!
+## MEET YOUR NEW BEST FRIEND, THE BOX!
 
 Imagine a little mailbox inside your computer's memory. In BX, a box stores a value under a specific name.
 
@@ -48,7 +48,7 @@ Boxes can even contain references to *other* boxes. Values are resolved when the
 
 ---
 
-## CHAPTER 2: WRITING YOUR FIRST PROGRAM
+## WRITING YOUR FIRST PROGRAM
 
 Are you ready to write a real program? Create a file on your disk named `hello.bx`.
 
@@ -104,7 +104,7 @@ Hello from BX!
 
 ---
 
-## CHAPTER 3: TALKING AND LISTENING
+## TALKING AND LISTENING
 
 ### Printing with SAY
 

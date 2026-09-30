@@ -30,6 +30,8 @@
         <li><a class="" href="power-users.html">Power User Tricks</a></li>
         <li><a class="" href="command-line.html">Driving bx From Your Shell</a></li>
         <li><a class="" href="compiling.html">Implementations and Compile Targets</a></li>
+        <li><a class="" href="libraries.html">Libraries</a></li>
+        <li><a class="" href="ui.html">The UI Layer</a></li>
     </ul>
     <p class="side-f">
         <a href="index.html">All chapters</a> &middot; 
@@ -38,7 +40,7 @@
 </nav>
 <div class="doc">
 <h1 id="getting-started">Getting Started</h1>
-<h2 id="chapter-1-meet-your-new-best-friend-the-box">CHAPTER 1: MEET YOUR NEW BEST FRIEND, THE BOX!</h2>
+<h2 id="meet-your-new-best-friend-the-box">MEET YOUR NEW BEST FRIEND, THE BOX!</h2>
 <p>Imagine a little mailbox inside your computer's memory. In BX, a box stores a value under a specific name.</p>
 <p>To create your very first box, you simply use the <code>box</code> command followed by the name you want to give it, the special <code>|</code> symbol (which BX uses to separate arguments), and the value you want to put inside.</p>
 <p>For example:</p>
@@ -61,7 +63,7 @@ say $score
 <p>Box names are not as strict as you might think. A name can contain letters, digits, and the characters <code>_</code>, <code>-</code>, <code>?</code>, and <code>#</code>. That is why BX programs can have boxes called <code>file-usr</code>, <code>boot?</code>, or <code>#1</code>.</p>
 <p>Boxes can even contain references to <em>other</em> boxes. Values are resolved when the <code>box</code> command runs, so if <code>name</code> already holds <code>BX</code>, a box whose value is <code>Hello \)name</code> stores the text <code>Hello BX</code>. This is what lets a box be a little template.</p>
 <hr>
-<h2 id="chapter-2-writing-your-first-program">CHAPTER 2: WRITING YOUR FIRST PROGRAM</h2>
+<h2 id="writing-your-first-program">WRITING YOUR FIRST PROGRAM</h2>
 <p>Are you ready to write a real program? Create a file on your disk named <code>hello.bx</code>.</p>
 <p>Type these exact lines into your file:</p>
 <pre><code class="language-bx">box name|BX
@@ -100,7 +102,7 @@ end
 <li><strong>Unknown commands do nothing:</strong> BX never crashes on a command it does not know. The line is simply skipped, so a typo costs you one step and nothing else.</li>
 </ul>
 <hr>
-<h2 id="chapter-3-talking-and-listening">CHAPTER 3: TALKING AND LISTENING</h2>
+<h2 id="talking-and-listening">TALKING AND LISTENING</h2>
 <h3 id="printing-with-say">Printing with SAY</h3>
 <p>The <code>say</code> command prints text to your output screen.</p>
 <pre><code class="language-bx">say Hello

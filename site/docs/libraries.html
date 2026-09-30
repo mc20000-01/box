@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Libraries - BoxedLANG docs</title>
+<meta name="description" content="Libraries">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<nav class="top">
+    <div class="inner">
+        <a class="brand" href="../index.html"><span class="sq">BX</span>BoxedLANG</a>
+                <a class="nav" href="../index.html">Home</a>
+        <a class="nav active" href="../docs/index.html">Docs</a>
+        <a class="nav" href="../packages.html">Packages</a>
+        <a class="nav" href="../install.html">Install</a>
+        <span class="spacer"></span>
+        <a class="nav" href="https://github.com/mc20000-01/boxed" rel="noopener">GitHub</a>
+    </div>
+</nav>
+<main class="wrap">
+<div class="docs"><nav class="side">
+    <p class="side-t">Manual</p>
+    <ul>
+        <li><a class="" href="getting-started.html">Getting Started</a></li>
+        <li><a class="" href="math-and-logic.html">Math and Logic</a></li>
+        <li><a class="" href="flow-control.html">Jumping Around: Flow Control</a></li>
+        <li><a class="" href="power-users.html">Power User Tricks</a></li>
+        <li><a class="" href="command-line.html">Driving bx From Your Shell</a></li>
+        <li><a class="" href="compiling.html">Implementations and Compile Targets</a></li>
+        <li><a class="on" href="libraries.html">Libraries</a></li>
+        <li><a class="" href="ui.html">The UI Layer</a></li>
+    </ul>
+    <p class="side-f">
+        <a href="index.html">All chapters</a> &middot; 
+        <a href="https://github.com/mc20000-01/boxed" rel="noopener">source</a>
+    </p>
+</nav>
+<div class="doc">
+<h1 id="libraries">Libraries</h1>
+<p>The boxes, the jumps, and the <code>math</code> command are the language itself. Everything else is a library: a C module that adds a new family of commands to BX, reachable through a prefix so a program can say <code>high.gfx.line</code> and mean a line on a framebuffer.</p>
+<p>Libraries are not loaded automatically. A program asks for the ones it wants, so a script that draws nothing does not pay for the drawing code.</p>
+<h2 id="loading-a-library">LOADING A LIBRARY</h2>
+<pre><code class="language-bx">lib load|gfx
+say $lib_active_gfx
+</code></pre>
+<p><code>lib list</code> prints what is compiled in and which is active:</p>
+<pre><code class="language-text">compiled-in libraries: wifi, gfx, snd, math
+active:
+  gfx
+</code></pre>
+<p><code>lib unload|name</code> turns one back off. Each family has its own active flag, so loading <code>gfx</code> does not turn on <code>snd</code>.</p>
+<p>Every library command is native-only. That is, they work in the reference <code>bx</code> interpreter but not in a transpiled program, because a transpiled program embeds a copy of the interpreter runtime and does not link the library sources. The commands still exist in that case; they explain that the library is not available rather than failing mysteriously.</p>
+<h2 id="the-families">THE FAMILIES</h2>
+<p>Five families ship in the box. Each one uses the dotted spelling, <code>prefix.action|args...</code>, because the dot is what tells a BX command apart from an ordinary one.</p>
+<p>| Family | What it does | | --- | --- | | <code>high.gfx.*</code> | framebuffer, themes, and the element tree | | <code>high.snd.*</code> | tones, melodies, and WAV files | | <code>high.math.*</code> | trigonometry, number theory, and constants | | <code>high.m3d.*</code> | vectors, quaternions, matrices, and transforms | | <code>high.wifi.*</code> | scanning, connecting, and status |</p>
+<p>There is also a <code>low.*</code> family, which reports the environment the runtime found: <code>low.env</code> answers <code>native</code>, <code>web</code>, or <code>baremetal</code>, which is how a program adapts instead of guessing.</p>
+<h2 id="graphics">GRAPHICS</h2>
+<p><code>high.gfx.*</code> owns a framebuffer and a themed element tree.</p>
+<pre><code class="language-bx">lib load|gfx
+high.gfx.init|800|600
+high.gfx.theme|dark
+high.gfx.rect|10|10|400|300|fill|#4fd6c4
+high.gfx.render
+</code></pre>
+<p>Colors are written the way a designer writes them: <code>#rgb</code>, <code>#rgba</code>, <code>#rrggbb</code>, and <code>#rrggbbaa</code>. The framebuffer knows the difference between <code>fill</code> and <code>line</code> because the last argument before the color is the mode.</p>
+<p>Shapes cover the usual ground: <code>rect</code>, <code>circle</code>, <code>ring</code>, <code>line</code>, <code>tri</code>, <code>poly</code>, <code>triline</code>, <code>plot</code>, and <code>pixel</code>. Gradients come in two directions, <code>gradh</code> and <code>gradv</code>, and <code>alpha</code> sets transparency for whatever is drawn next. <code>fbinfo</code>, <code>fbsize</code>, and <code>fbclear</code> report and reset the surface.</p>
+<p>A theme is exactly six ordered tags with <code>^^</code> caret inheritance, so a theme can say "title bar text is dim" without repeating the color, and <code>theme</code> / <code>styles</code> / <code>style</code> push and pop theme history.</p>
+<p>The element tree is the part that is meant to outlive a one-off drawing command: <code>new</code> makes an element by id, <code>get</code> looks one up, <code>set</code> changes a field, <code>draw</code> renders a subtree, and <code>clip</code> and <code>translate</code> set up a coordinate space for it. <code>render</code> puts the framebuffer on screen.</p>
+<p><code>make gfx-tests</code> runs the checks.</p>
+<h2 id="sound">SOUND</h2>
+<p><code>high.snd.*</code> covers both synthesis and playback.</p>
+<pre><code class="language-bx">lib load|snd
+high.snd.init|44100|1
+high.snd.tone|440|0.25
+high.snd.melody|C4|D4|E4|G4
+high.snd.render
+</code></pre>
+<p><code>tone</code> plays one frequency for a duration. <code>melody</code> plays a list of note names, and <code>note</code> plays a single named note. <code>midi</code>, <code>mvel</code>, and <code>voices</code> cover instruments and polyphony, <code>freq</code> converts a note to hertz, and <code>samples</code> and <code>wav</code> read or write sample data. <code>env</code> reads the envelope and <code>rate</code> sets the sample rate.</p>
+<p><code>make snd-tests</code> runs the checks.</p>
+<h2 id="math">MATH</h2>
+<p><code>high.math.*</code> is the arithmetic the built-in <code>math</code> command does not do. The built-in command is integer-only and always will be, because integer math is fast and predictable; this family is where the rest lives.</p>
+<pre><code class="language-bx">lib load|math
+high.math.sqrt|2|root
+high.math.fib|20|fib
+say $root
+say $fib
+</code></pre>
+<p><code>sqrt</code>, <code>log</code>, <code>exp</code>, <code>pow</code>, and the trigonometry (<code>sin</code>, <code>cos</code>, <code>tan</code>, and their hyperbolic and degree variants) all take an operation and an output box. <code>deg2rad</code> and <code>rad2deg</code> convert angles without going through a library call.</p>
+<p>The number theory is the interesting half: <code>isprime</code>, <code>nthprime</code>, <code>fib</code>, <code>fact</code>, <code>ncr</code>, <code>npr</code>, <code>gcd</code>, <code>lcm</code>, <code>isqrt</code>, <code>trunc</code>, and the digit sums <code>digitsum</code>, <code>divsum</code>, and <code>divcount</code>. <code>factor</code> returns a prime factorisation, <code>phi</code> and <code>totient</code> count coprimes, <code>collatz</code> runs the sequence, and <code>droot</code> takes an nth root.</p>
+<h2 id="3d-math">3D MATH</h2>
+<p><code>high.m3d.*</code> works on vectors, quaternions, and matrices.</p>
+<pre><code class="language-bx">lib load|math
+high.m3d.vadd|a|b|c
+high.m3d.vnorm|a|unit
+high.m3d.qmul|q|r|out
+</code></pre>
+<p>The vector commands are <code>vadd</code>, <code>vsub</code>, <code>vscale</code>, <code>vdot</code>, <code>vcross</code>, and <code>vlen</code>. Quaternions get <code>qmul</code>, <code>qconj</code>, <code>qnorm</code>, <code>qrot</code>, and <code>qaxis</code>. Matrices get <code>mmul</code>, <code>mrot</code>, <code>mrotx</code>, <code>mroty</code>, <code>mrotz</code>, <code>mtrans</code>, and <code>mscale</code>. <code>mvec</code> transforms a vector by a matrix, <code>mident</code> makes an identity matrix, and <code>vnorm</code> normalises in place.</p>
+<p>Rotations are quaternions rather than Euler angles on purpose: <code>mrotx</code>, <code>mroty</code>, and <code>mrotz</code> exist for composing a rotation from parts, but gimbal lock lives in the Euler representation, not in this one.</p>
+<h2 id="wifi">WIFI</h2>
+<p><code>high.wifi.*</code> has three implementations behind the same commands: native, web/WASM, and bare metal. <code>init</code> and <code>status</code> report what is available, <code>connect</code> and <code>disconnect</code> manage a link.</p>
+<p>This is the family most likely to be unavailable: the commands report the reason instead of pretending, so a program that asks on a machine with no radio gets an answer rather than a hang.</p>
+<h2 id="naming-and-style">NAMING AND STYLE</h2>
+<p>A library never invents its own way to talk to the program. Results go into boxes, exactly like <code>math</code>, so <code>$</code> works the same everywhere:</p>
+<pre><code class="language-bx">high.math.fib|20|n
+say $n
+</code></pre>
+<p>That consistency is the point. Once you know that a box holds a value and <code>$name</code> reads it, no library needs its own syntax to teach you.</p>
+<p class="next"><a href="index.html">All chapters</a></p>
+</div></div>
+</main>
+<footer>
+    BoxedLANG v0.2.0 &middot; <a href="https://github.com/mc20000-01/boxed">source</a> &middot;
+    <a href="https://github.com/mc20000-01/BoxPkg">BoxPkg registry</a>
+</footer>
+</body>
+</html>

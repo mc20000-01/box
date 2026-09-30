@@ -1,6 +1,6 @@
 # Jumping Around: Flow Control
 
-## CHAPTER 6: JUMPING AROUND!
+## JUMPING AROUND!
 
 Programs don't just have to run straight down from top to bottom. You can jump around!
 

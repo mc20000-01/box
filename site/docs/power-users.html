@@ -30,6 +30,8 @@
         <li><a class="on" href="power-users.html">Power User Tricks</a></li>
         <li><a class="" href="command-line.html">Driving bx From Your Shell</a></li>
         <li><a class="" href="compiling.html">Implementations and Compile Targets</a></li>
+        <li><a class="" href="libraries.html">Libraries</a></li>
+        <li><a class="" href="ui.html">The UI Layer</a></li>
     </ul>
     <p class="side-f">
         <a href="index.html">All chapters</a> &middot; 
@@ -38,7 +40,7 @@
 </nav>
 <div class="doc">
 <h1 id="power-user-tricks">Power User Tricks</h1>
-<h2 id="chapter-7-advanced-tricks-for-power-users">CHAPTER 7: ADVANCED TRICKS FOR POWER USERS</h2>
+<h2 id="advanced-tricks-for-power-users">ADVANCED TRICKS FOR POWER USERS</h2>
 <ul>
 <li><strong>Deleting Boxes:</strong> Keep your computer's memory tidy! Use <code>del NAME</code> to completely erase a box you no longer need. Asking for a box that was never created, or that you deleted, gives you an empty string instead of an error.</li>
 </ul>
@@ -136,6 +138,7 @@
 <li><code>low.*</code> is always available: <code>low.arch</code>, <code>low.env</code>, <code>low.tick|box</code> (monotonic nanoseconds), <code>low.pid|box</code>.</li>
 </ul>
 <h3 id="the-gfx-library">The GFX library</h3>
+<p>The full family list is in <a href="libraries.html">Libraries</a>, and the window system built on top of it is in <a href="ui.html">The UI Layer</a>.</p>
 <p><code>lib load|gfx</code> turns on a themed UI element tree. Elements are identified by a <code>uint32</code> id; pass <code>0</code> as the id to have one assigned, and the box you name is set to the real id. Note that the subcommand is part of the command token, so it is spelled <code>high.gfx.new</code>, not <code>high.gfx new</code>.</p>
 <pre><code class="language-text">high.gfx.types                                  element type names
 high.gfx.color|BOX|#rgb                         parse a color to an integer
