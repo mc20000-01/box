@@ -1,0 +1,387 @@
+// Regression tests for the str and file builtins.
+//
+// BX has no call arguments, so each check passes its values through boxes and
+// names its continuation in $ck_next:
+//
+//   box ck_name|left
+//   box ck_got|$got
+//   box ck_want|boxed
+//   box ck_next|t_next
+//   jump check|m
+//
+// The `check` block compares, prints PASS or FAIL, and jumps to $ck_next.
+//
+// Execution starts at the jump below so the blocks below are only entered by
+// control flow, not by falling in from the top. premark registers every mark
+// while the program loads, so forward jumps still resolve.
+box failures|0
+jump t_len2|m
+
+premark check
+jumpif $ck_got|!==|$ck_want|check_fail|m
+say PASS $ck_name
+jump $ck_next|m
+
+premark check_fail
+math failures|$failures|1|+
+say FAIL $ck_name got [$ck_got] want [$ck_want]
+jump $ck_next|m
+
+// ---------- str ----------
+
+premark t_len
+str s|len|hello world
+box ck_name|len
+box ck_got|$s
+box ck_want|11
+box ck_next|t_upper
+jump check|m
+
+premark t_upper
+str s|upper|abc
+box ck_name|upper
+box ck_got|$s
+box ck_want|ABC
+box ck_next|t_lower
+jump check|m
+
+premark t_lower
+str s|lower|ABC
+box ck_name|lower
+box ck_got|$s
+box ck_want|abc
+box ck_next|t_find
+jump check|m
+
+premark t_find
+str s|find|hello|ll
+box ck_name|find
+box ck_got|$s
+box ck_want|2
+box ck_next|t_findmiss
+jump check|m
+
+premark t_findmiss
+str s|find|hello|zz
+box ck_name|find-missing
+box ck_got|$s
+box ck_want|-1
+box ck_next|t_take
+jump check|m
+
+premark t_take
+str s|take|hello world|6|5
+box ck_name|take
+box ck_got|$s
+box ck_want|world
+box ck_next|t_left
+jump check|m
+
+premark t_left
+str s|left|boxedlang|5
+box ck_name|left
+box ck_got|$s
+box ck_want|boxed
+box ck_next|t_right
+jump check|m
+
+premark t_right
+str s|right|boxedlang|4
+box ck_name|right
+box ck_got|$s
+box ck_want|lang
+box ck_next|t_repeat
+jump check|m
+
+premark t_repeat
+str s|repeat|ab|3
+box ck_name|repeat
+box ck_got|$s
+box ck_want|ababab
+box ck_next|t_pad
+jump check|m
+
+// `box` trims trailing spaces, so check the padded width and the visible
+// content rather than comparing against a literal that ends in blanks.
+premark t_pad
+str s|pad|hi|5
+str s_len|len|$s
+str s_head|left|$s|2
+box ck_name|pad-width
+box ck_got|$s_len
+box ck_want|5
+box ck_next|t_pad_head
+jump check|m
+
+premark t_pad_head
+box ck_name|pad-content
+box ck_got|$s_head
+box ck_want|hi
+box ck_next|t_replace
+jump check|m
+
+premark t_replace
+str s|replace|a-b-c|-|+
+box ck_name|replace
+box ck_got|$s
+box ck_want|a+b+c
+box ck_next|t_wordcount
+jump check|m
+
+premark t_wordcount
+str s|wordcount|one two three
+box ck_name|wordcount
+box ck_got|$s
+box ck_want|3
+box ck_next|t_reverse
+jump check|m
+
+premark t_reverse
+str s|reverse|abc
+box ck_name|reverse
+box ck_got|$s
+box ck_want|cba
+box ck_next|t_contains
+jump check|m
+
+premark t_contains
+str s|contains|hello|ell
+box ck_name|contains
+box ck_got|$s
+box ck_want|1
+box ck_next|t_notcontains
+jump check|m
+
+premark t_notcontains
+str s|contains|hello|zz
+box ck_name|not-contains
+box ck_got|$s
+box ck_want|0
+box ck_next|t_startswith
+jump check|m
+
+premark t_startswith
+str s|startswith|hello|he
+box ck_name|startswith
+box ck_got|$s
+box ck_want|1
+box ck_next|t_endswith
+jump check|m
+
+premark t_endswith
+str s|endswith|hello|lo
+box ck_name|endswith
+box ck_got|$s
+box ck_want|1
+box ck_next|t_endswithno
+jump check|m
+
+premark t_endswithno
+str s|endswith|hello|he
+box ck_name|endswith-no
+box ck_got|$s
+box ck_want|0
+box ck_next|t_count
+jump check|m
+
+premark t_count
+str s|count|cheeseese|ee
+box ck_name|count
+box ck_got|$s
+box ck_want|2
+box ck_next|t_count_one
+jump check|m
+
+premark t_count_one
+str c1|count|cheese|ee
+box ck_name|count-one
+box ck_got|$c1
+box ck_want|1
+box ck_next|t_squeeze
+jump check|m
+
+premark t_squeeze
+str s|squeeze|a   b
+box ck_name|squeeze
+box ck_got|$s
+box ck_want|a b
+box ck_next|t_capitalize
+jump check|m
+
+premark t_capitalize
+str s|capitalize|hELLO
+box ck_name|capitalize
+box ck_got|$s
+box ck_want|Hello
+box ck_next|t_titlecase
+jump check|m
+
+premark t_titlecase
+str s|titlecase|hello big world
+box ck_name|titlecase
+box ck_got|$s
+box ck_want|Hello Big World
+box ck_next|t_isdigit
+jump check|m
+
+premark t_isdigit
+str s|isdigit|123
+box ck_name|isdigit
+box ck_got|$s
+box ck_want|1
+box ck_next|t_isdigitno
+jump check|m
+
+premark t_isdigitno
+str s|isdigit|12a
+box ck_name|isdigit-no
+box ck_got|$s
+box ck_want|0
+box ck_next|t_center
+jump check|m
+
+premark t_center
+str s|center|ab|6
+str s_len|len|$s
+str s_mid|take|$s|2|2
+box ck_name|center-width
+box ck_got|$s_len
+box ck_want|6
+box ck_next|t_center_mid
+jump check|m
+
+premark t_center_mid
+box ck_name|center-content
+box ck_got|$s_mid
+box ck_want|ab
+box ck_next|t_quote
+jump check|m
+
+premark t_quote
+str s|quote|hi
+box ck_name|quote
+box ck_got|$s
+box ck_want|"hi"
+box ck_next|t_join
+jump check|m
+
+premark t_join
+box j1|one
+box j2|two
+str s|join|-|$j1|$j2
+box ck_name|join
+box ck_got|$s
+box ck_want|one-two
+box ck_next|t_chunks
+jump check|m
+
+premark t_chunks
+str s|chunks|abcdef|2|-
+box ck_name|chunks
+box ck_got|$s
+box ck_want|ab-cd-ef
+box ck_next|t_split
+jump check|m
+
+premark t_split
+// The result contains literal | characters. BX uses | as the argument
+// separator, so assert it by length and character positions instead of
+// writing the bars directly into the test source.
+str s|split|a-b-c|-
+str n|len|$s
+box ck_name|split
+box ck_got|$n
+box ck_want|5
+box ck_next|t_split_b
+jump check|m
+
+premark t_split_b
+str fb|find|$s|b
+str fc|find|$s|c
+box ck_name|split-bytes
+box ck_got|$fb/$fc
+box ck_want|2/4
+box ck_next|t_wrap
+jump check|m
+
+premark t_wrap
+str s|wrap|a b c d|3|/
+box ck_name|wrap
+box ck_got|$s
+box ck_want|a b/c d
+box ck_next|t_trim
+jump check|m
+
+premark t_trim
+str s|trim|   spaced out
+box ck_name|trim
+box ck_got|$s
+box ck_want|spaced out
+box ck_next|t_tofile
+jump check|m
+
+// ---------- file ----------
+
+premark t_tofile
+file fh|open|.build/feature.tmp|w
+file wrote|write|$fh|abc
+box ck_name|file-write
+box ck_got|$wrote
+box ck_want|3
+box ck_next|t_size
+jump check|m
+
+premark t_size
+file sz|size|.build/feature.tmp
+box ck_name|file-size
+box ck_got|$sz
+box ck_want|3
+box ck_next|t_read
+jump check|m
+
+premark t_read
+file fh|open|.build/feature.tmp|r
+file data|read|$fh|10
+box ck_name|file-read
+box ck_got|$data
+box ck_want|abc
+box ck_next|t_exists
+jump check|m
+
+premark t_exists
+file $fh|close
+file ex|exists|.build/feature.tmp
+box ck_name|file-exists
+box ck_got|$ex
+box ck_want|1
+box ck_next|t_missing
+jump check|m
+
+premark t_missing
+file nx|exists|.build/nope.tmp
+box ck_name|file-missing
+box ck_got|$nx
+box ck_want|0
+box ck_next|t_remove
+jump check|m
+
+premark t_remove
+file rm|remove|.build/feature.tmp
+file ax|exists|.build/feature.tmp
+box ck_name|file-removed
+box ck_got|$ax
+box ck_want|0
+box ck_next|t_done
+jump check|m
+
+// ---------- run ----------
+// The runner appends a `jump t_len2|m` line so this file stays importable
+// without auto-running.
+
+premark t_len2
+jump t_len|m
+
+premark t_done
+say
+say feature tests done, failures: $failures
+end

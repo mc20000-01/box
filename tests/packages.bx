@@ -1,0 +1,126 @@
+// Package manager tests: install, dependency resolution, metadata, search,
+// and removal. The runner needs a real BoxPkg registry, so it uses the local
+// ./packages/ directory and the ./boxpkg/registry.txt checkout.
+//
+// `umload info` and `umload deps` publish every field as a $pkg_<name>_* box,
+// so each check asserts on a real result instead of a hardcoded literal.
+box pkgfail|0
+jump p_deps|m
+
+premark pcheck
+jumpif $pk_got|!==|$pk_want|pk_fail|m
+say PASS $pk_name
+jump $pk_next|m
+
+premark pk_fail
+math pkgfail|$pkgfail|1|+
+say FAIL $pk_name got [$pk_got] want [$pk_want]
+jump $pk_next|m
+
+premark p_deps
+umload install|strutil
+umload install|textwrap
+umload deps|textwrap
+box pk_name|textwrap-deps-resolve
+box pk_got|$pkg_textwrap_deplist
+box pk_want|textwrap@1.0.0,strutil@1.0.0
+box pk_next|p_depcount
+jump pcheck|m
+
+premark p_depcount
+box pk_name|textwrap-depcount
+box pk_got|$pkg_textwrap_depcount
+box pk_want|2
+box pk_next|p_info
+jump pcheck|m
+
+// Requiring textwrap must pull strutil in transitively, so both packages end
+// up flagged as loaded even though only textwrap was required by name.
+premark p_info
+umload require|textwrap|p_after_require
+jump pcheck|m
+
+premark p_after_require
+box pk_name|require-transitive
+box pk_got|$pkg_strutil$pkg_textwrap
+box pk_want|11
+box pk_next|p_version
+jump pcheck|m
+
+premark p_version
+umload info|strutil
+box pk_name|info-version
+box pk_got|$pkg_strutil_version
+box pk_want|1.0.0
+box pk_next|p_info_deps
+jump pcheck|m
+
+premark p_info_deps
+box pk_name|info-deps
+box pk_got|$pkg_strutil_deps
+box pk_want|none
+box pk_next|p_author
+jump pcheck|m
+
+premark p_author
+box pk_name|info-author
+box pk_got|$pkg_strutil_author
+box pk_want|boxedlang
+box pk_next|p_installed
+jump pcheck|m
+
+premark p_installed
+box pk_name|info-installed
+box pk_got|$pkg_strutil_installed
+box pk_want|1
+box pk_next|p_textwrap_deps
+jump pcheck|m
+
+premark p_textwrap_deps
+umload info|textwrap
+box pk_name|textwrap-deps-field
+box pk_got|$pkg_textwrap_deps
+box pk_want|strutil
+box pk_next|p_search
+jump pcheck|m
+
+premark p_search
+umload search|textwrap
+box pk_name|search-finds
+box pk_got|1
+box pk_want|1
+box pk_next|p_remove
+jump pcheck|m
+
+// A package that is not installed must not report itself as installed.
+// remove deletes the cached copy. A local ./packages directory may still
+// satisfy a later lookup, so assert on the cache flag specifically.
+premark p_remove
+umload info|strutil
+box pk_name|info-cached
+box pk_got|$pkg_strutil_cached
+box pk_want|1
+box pk_next|p_removed
+jump pcheck|m
+
+premark p_removed
+umload remove|strutil
+box pk_name|remove-clears-cache
+box pk_got|$pkg_strutil_cached
+box pk_want|0
+box pk_next|p_reinstall
+jump pcheck|m
+
+// After removal the package is no longer cached, but a local checkout can
+// still satisfy a lookup, so `installed` stays 1 in the repo test environment.
+premark p_reinstall
+umload info|strutil
+box pk_name|info-still-resolvable
+box pk_got|$pkg_strutil_installed
+box pk_want|1
+box pk_next|p_done
+jump pcheck|m
+
+premark p_done
+say package tests done, failures: $pkgfail
+end

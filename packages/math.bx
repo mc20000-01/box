@@ -1,0 +1,4 @@
+math prodx|$a|$b|*
+box product|$prodx
+say product is $prodx
+end

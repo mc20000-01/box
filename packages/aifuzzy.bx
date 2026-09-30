@@ -1,0 +1,179 @@
+// name: aifuzzy
+// version: 1.0.0
+// author: boxedlang
+// description: Levenshtein edit distance, similarity scoring, and best-match search
+// deps: none
+//
+// Fuzzy string matching for BoxedLANG: spell-check style comparison, intent
+// matching, and "did you mean" lookups.
+//
+//   box fz_a|helo
+//   box fz_b|hello
+//   umload require|aifuzzy|
+//   say dist=$fz_dist sim=$fz_sim
+//
+// Inputs:
+//   $fz_a     first string
+//   $fz_b     second string
+//   $fz_list  optional comma separated candidates to search
+//
+// Outputs:
+//   $fz_dist      edit distance between $fz_a and $fz_b
+//   $fz_sim       similarity of that pair, 0-100
+//   $fz_n         number of candidates searched
+//   $fz_best      closest candidate from $fz_list
+//   $fz_best_sim  similarity of $fz_best to $fz_a, 0-100
+//
+// Note: the \(...\) escape is used to build dynamic box names, because a plain
+// $name_ would swallow the trailing underscore as part of the box name.
+
+box fz_phase|init
+box fz_alen|0
+box fz_blen|0
+box fz_max|0
+box fz_dist|0
+box fz_sim|0
+box fz_best|
+box fz_best_sim|-1
+box fz_n|0
+
+box fm_i|0
+box fm_j|0
+box fpi|0
+box fpj|0
+box fmin|0
+box fcost|0
+box ft|0
+box fn|
+box fca|
+box fcb|
+
+box fpos|0
+box frest|
+box fcomma|0
+box fcand|
+
+jump fz_setup|m
+
+// ---------------------------------------------------------------- calculate
+// Recomputes $fz_dist and $fz_sim for the current $fz_a and $fz_b, then
+// returns to the caller through fz_phase.
+premark fz_setup
+str fz_alen|len|$fz_a
+str fz_blen|len|$fz_b
+
+// seed row 0: d[0][j] = j
+box fm_j|0
+premark fz_row0
+box fn|d_0_\(fm_j\)
+box $fn|$fm_j
+math fm_j|1|$fm_j|+
+jumpif $fm_j|<=|$fz_blen|fz_row0|m
+
+// seed column 0: d[i][0] = i
+box fm_i|0
+premark fz_col0
+box fn|d_\(fm_i\)_0
+box $fn|$fm_i
+math fm_i|1|$fm_i|+
+jumpif $fm_i|<=|$fz_alen|fz_col0|m
+
+// dynamic programming pass. Loop counters are 1-based to match the d[i][j]
+// grid, while `str take` is 0-based, so fpi/fpj hold the 0-based offsets.
+box fm_i|1
+premark fz_outer
+box fm_j|1
+premark fz_inner
+math fpi|$fm_i|1|-
+math fpj|$fm_j|1|-
+str fca|take|$fz_a|$fpi|1
+str fcb|take|$fz_b|$fpj|1
+box fcost|0
+jumpif $fca|===|$fcb|fz_cost_done|m
+box fcost|1
+premark fz_cost_done
+
+box fmin|999
+// deletion: d[i-1][j] + 1
+box fn|d_\(fpi\)_\(fm_j\)
+math ft|1|$$fn|+
+jumpif $ft|>=|$fmin|fz_del_skip|m
+box fmin|$ft
+premark fz_del_skip
+// insertion: d[i][j-1] + 1
+box fn|d_\(fm_i\)_\(fpj\)
+math ft|1|$$fn|+
+jumpif $ft|>=|$fmin|fz_ins_skip|m
+box fmin|$ft
+premark fz_ins_skip
+// substitution: d[i-1][j-1] + cost
+box fn|d_\(fpi\)_\(fpj\)
+math ft|$$fn|$fcost|+
+jumpif $ft|>=|$fmin|fz_store|m
+box fmin|$ft
+premark fz_store
+box fn|d_\(fm_i\)_\(fm_j\)
+box $fn|$fmin
+
+math fm_j|1|$fm_j|+
+jumpif $fm_j|<=|$fz_blen|fz_inner|m
+math fm_i|1|$fm_i|+
+jumpif $fm_i|<=|$fz_alen|fz_outer|m
+
+box fn|d_\(fz_alen\)_\(fz_blen\)
+box fz_dist|$$fn
+
+// similarity = (max - dist) * 100 / max
+box fz_max|$fz_alen
+jumpif $fz_blen|<=|$fz_max|fz_max_done|m
+box fz_max|$fz_blen
+premark fz_max_done
+jumpif $fz_max|===|0|fz_sim_done|m
+math ft|$fz_max|$fz_dist|-
+math fz_sim|100|$ft|*
+math fz_sim|$fz_sim|$fz_max|/
+premark fz_sim_done
+
+jumpif $fz_phase|===|init|fz_compare|m
+jump fz_first_done|m
+
+// first pass done, start the best-match search
+premark fz_first_done
+box fz_best_sim|-1
+box fz_best|
+box fz_n|0
+jumpif $fz_list|===||fz_finish|m
+box fz_phase|loop
+box fpos|0
+jump fz_next_field|m
+
+// --------------------------------------------------------- best-match loop
+// Walk the comma separated candidate list one field at a time. $fz_list cannot
+// be split into indexed slots directly, so the next comma is located with
+// `str find` on the unconsumed tail.
+premark fz_next_field
+str frest|take|$fz_list|$fpos|9999
+jumpif $frest|===||fz_finish|m
+str fcomma|find|$frest|,
+jumpif $fcomma|<|0|fz_whole|m
+str fcand|take|$frest|0|$fcomma
+math fpos|$fpos|$fcomma|+
+math fpos|1|$fpos|+
+jump fz_have|m
+premark fz_whole
+box fcand|$frest
+box fpos|9999
+premark fz_have
+math fz_n|1|$fz_n|+
+jumpif $fcand|===||fz_next_field|m
+box fz_b|$fcand
+jump fz_setup|m
+
+premark fz_compare
+jumpif $fz_sim|<|$fz_best_sim|fz_next_field|m
+box fz_best_sim|$fz_sim
+box fz_best|$fcand
+jump fz_next_field|m
+
+premark fz_finish
+end

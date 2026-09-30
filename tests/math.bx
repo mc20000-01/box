@@ -1,0 +1,461 @@
+// General purpose math: advanced functions (high.math) and the 3D toolkit
+// (high.m3d: vec3, matrices, quaternions). Vectors/matrices/quaternions are
+// box strings of space-separated numbers ("x y z", 16 row-major values, "w x y z").
+
+box mathfail|0
+lib load|math
+
+// --- integer extras ------------------------------------------------
+box mn_name|gcd
+high.math.gcd mn_got|12|18
+box mn_want|6
+box mn_next|x_lcm
+jump mncheck|m
+
+premark x_lcm
+high.math.lcm mn_got|12|18
+box mn_name|lcm
+box mn_want|36
+box mn_next|x_fact
+jump mncheck|m
+
+premark x_fact
+high.math.fact mn_got|5
+box mn_name|factorial
+box mn_want|120
+box mn_next|x_fib
+jump mncheck|m
+
+premark x_fib
+high.math.fib mn_got|10
+box mn_name|fibonacci
+box mn_want|55
+box mn_next|x_prime_y
+jump mncheck|m
+
+premark x_prime_y
+high.math.isprime mn_got|17
+box mn_name|isprime-17
+box mn_want|1
+box mn_next|x_prime_n
+jump mncheck|m
+
+premark x_prime_n
+high.math.isprime mn_got|4
+box mn_name|isprime-4
+box mn_want|0
+box mn_next|x_nthprime
+jump mncheck|m
+
+premark x_nthprime
+high.math.nthprime mn_got|10
+box mn_name|10th-prime
+box mn_want|29
+box mn_next|x_ncr
+jump mncheck|m
+
+premark x_ncr
+high.math.ncr mn_got|5|2
+box mn_name|ncr
+box mn_want|10
+box mn_next|x_npr
+jump mncheck|m
+
+premark x_npr
+high.math.npr mn_got|5|2
+box mn_name|npr
+box mn_want|20
+box mn_next|x_isqrt
+jump mncheck|m
+
+premark x_isqrt
+high.math.isqrt mn_got|17
+box mn_name|isqrt
+box mn_want|4
+box mn_next|x_totient
+jump mncheck|m
+
+premark x_totient
+high.math.totient mn_got|9
+box mn_name|totient
+box mn_want|6
+box mn_next|x_divcount
+jump mncheck|m
+
+premark x_divcount
+high.math.divcount mn_got|12
+box mn_name|divcount
+box mn_want|6
+box mn_next|x_divsum
+jump mncheck|m
+
+premark x_divsum
+high.math.divsum mn_got|12
+box mn_name|divsum
+box mn_want|28
+box mn_next|x_digitsum
+jump mncheck|m
+
+premark x_digitsum
+high.math.digitsum mn_got|1234
+box mn_name|digitsum
+box mn_want|10
+box mn_next|x_droot
+jump mncheck|m
+
+premark x_droot
+high.math.droot mn_got|1234
+box mn_name|digital-root
+box mn_want|1
+box mn_next|x_collatz
+jump mncheck|m
+
+premark x_collatz
+high.math.collatz mn_got|6
+box mn_name|collatz-steps
+box mn_want|8
+box mn_next|x_factor
+jump mncheck|m
+
+premark x_factor
+high.math.factor mn_got|100
+box mn_name|factor
+box mn_want|2 2 5 5
+box mn_next|x_frac
+jump mncheck|m
+
+premark x_frac
+high.math.frac mn_got|0.75
+box mn_name|frac
+box mn_want|3 4
+box mn_next|x_abs
+jump mncheck|m
+
+// --- rounding and misc ---------------------------------------------
+premark x_abs
+high.math.abs mn_got|-5
+box mn_name|abs
+box mn_want|5
+box mn_next|x_sign
+jump mncheck|m
+
+premark x_sign
+high.math.sign mn_got|-3
+box mn_name|sign
+box mn_want|-1
+box mn_next|x_floor
+jump mncheck|m
+
+premark x_floor
+high.math.floor mn_got|-1.5
+box mn_name|floor
+box mn_want|-2
+box mn_next|x_ceil
+jump mncheck|m
+
+premark x_ceil
+high.math.ceil mn_got|1.2
+box mn_name|ceil
+box mn_want|2
+box mn_next|x_round
+jump mncheck|m
+
+premark x_round
+high.math.round mn_got|2.6
+box mn_name|round
+box mn_want|3
+box mn_next|x_trunc
+jump mncheck|m
+
+premark x_trunc
+high.math.trunc mn_got|2.7
+box mn_name|trunc
+box mn_want|2
+box mn_next|x_clamp_hi
+jump mncheck|m
+
+premark x_clamp_hi
+high.math.clamp mn_got|5|0|3
+box mn_name|clamp-high
+box mn_want|3
+box mn_next|x_clamp_lo
+jump mncheck|m
+
+premark x_clamp_lo
+high.math.clamp mn_got|-2|0|3
+box mn_name|clamp-low
+box mn_want|0
+box mn_next|x_lerp
+jump mncheck|m
+
+premark x_lerp
+high.math.lerp mn_got|0|10|0.5
+box mn_name|lerp
+box mn_want|5
+box mn_next|x_min
+jump mncheck|m
+
+premark x_min
+high.math.min mn_got|3|7
+box mn_name|min
+box mn_want|3
+box mn_next|x_max
+jump mncheck|m
+
+premark x_max
+high.math.max mn_got|3|7
+box mn_name|max
+box mn_want|7
+box mn_next|x_analysis
+jump mncheck|m
+
+// --- real analysis -------------------------------------------------
+premark x_analysis
+high.math.sqrt mn_got|2
+box mn_name|sqrt
+box mn_want|1.41421
+box mn_next|x_root
+jump mncheck|m
+
+premark x_root
+high.math.root mn_got|27|3
+box mn_name|cube-root
+box mn_want|3
+box mn_next|x_pow
+jump mncheck|m
+
+premark x_pow
+high.math.pow mn_got|2|10
+box mn_name|pow
+box mn_want|1024
+box mn_next|x_exp
+jump mncheck|m
+
+premark x_exp
+high.math.exp mn_got|1
+box mn_name|exp
+box mn_want|2.71828
+box mn_next|x_log10
+jump mncheck|m
+
+premark x_log10
+high.math.log10 mn_got|1000
+box mn_name|log10
+box mn_want|3
+box mn_next|x_log2
+jump mncheck|m
+
+premark x_log2
+high.math.log2 mn_got|8
+box mn_name|log2
+box mn_want|3
+box mn_next|x_hypot
+jump mncheck|m
+
+premark x_hypot
+high.math.hypot mn_got|3|4
+box mn_name|hypot
+box mn_want|5
+box mn_next|x_trig
+jump mncheck|m
+
+premark x_trig
+high.math.sind mn_got|90
+box mn_name|sind
+box mn_want|1
+box mn_next|x_trig2
+jump mncheck|m
+
+premark x_trig2
+high.math.cosd mn_got|60
+box mn_name|cosd
+box mn_want|0.5
+box mn_next|x_trig3
+jump mncheck|m
+
+premark x_trig3
+high.math.tand mn_got|45
+box mn_name|tand
+box mn_want|1
+box mn_next|x_asin
+jump mncheck|m
+
+premark x_asin
+high.math.asin mn_got|1
+box mn_name|asin
+box mn_want|1.5708
+box mn_next|x_atan2
+jump mncheck|m
+
+premark x_atan2
+high.math.atan2 mn_got|1|1
+box mn_name|atan2
+box mn_want|0.785398
+box mn_next|x_deg2rad
+jump mncheck|m
+
+premark x_deg2rad
+high.math.deg2rad mn_got|180
+box mn_name|deg2rad
+box mn_want|3.14159
+box mn_next|x_rad2deg
+jump mncheck|m
+
+premark x_rad2deg
+high.math.rad2deg mn_got|3.141592653589793
+box mn_name|rad2deg
+box mn_want|180
+box mn_next|x_vec3d
+jump mncheck|m
+
+// --- vec3 --------------------------------------------------------------
+premark x_vec3d
+high.m3d.vlen mn_got|3 4 0
+box mn_name|vlen
+box mn_want|5
+box mn_next|x_vlen2
+jump mncheck|m
+
+premark x_vlen2
+high.m3d.vlen mn_got|1 2 2
+box mn_name|vlen-3d
+box mn_want|3
+box mn_next|x_vnorm
+jump mncheck|m
+
+premark x_vnorm
+high.m3d.vnorm mn_got|3 4 0
+box mn_name|vnorm
+box mn_want|0.6 0.8 0
+box mn_next|x_vadd
+jump mncheck|m
+
+premark x_vadd
+high.m3d.vadd mn_got|1 2 3|1 1 1
+box mn_name|vadd
+box mn_want|2 3 4
+box mn_next|x_vsub
+jump mncheck|m
+
+premark x_vsub
+high.m3d.vsub mn_got|1 2 3|1 1 1
+box mn_name|vsub
+box mn_want|0 1 2
+box mn_next|x_vscale
+jump mncheck|m
+
+premark x_vscale
+high.m3d.vscale mn_got|2 0 0|3
+box mn_name|vscale
+box mn_want|6 0 0
+box mn_next|x_vdot
+jump mncheck|m
+
+premark x_vdot
+high.m3d.vdot mn_got|1 2 3|4 5 6
+box mn_name|vdot
+box mn_want|32
+box mn_next|x_vcross
+jump mncheck|m
+
+premark x_vcross
+high.m3d.vcross mn_got|1 0 0|0 1 0
+box mn_name|vcross
+box mn_want|0 0 1
+box mn_next|x_mat
+jump mncheck|m
+
+// --- matrices --------------------------------------------------------------
+premark x_mat
+high.m3d.mident mn_got
+box mn_name|mident
+box mn_want|1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1
+box mn_next|x_mtrans
+jump mncheck|m
+
+premark x_mtrans
+high.m3d.mtrans mtv|3|4|5
+box mn_name|mtrans
+box mn_got|$mtv
+box mn_want|1 0 0 0 0 1 0 0 0 0 1 0 3 4 5 1
+box mn_next|x_mscale
+jump mncheck|m
+
+premark x_mscale
+high.m3d.mscale mn_got|2|3|4
+box mn_name|mscale
+box mn_want|2 0 0 0 0 3 0 0 0 0 4 0 0 0 0 1
+box mn_next|x_mrotz
+jump mncheck|m
+
+premark x_mrotz
+high.m3d.mrotz zmat|90
+box mn_name|mrotz
+box mn_got|$zmat
+box mn_want|0 -1 0 0 1 0 0 0 0 0 1 0 0 0 0 1
+box mn_next|x_mrotx
+jump mncheck|m
+
+premark x_mrotx
+high.m3d.mrotx xmat|90
+box mn_name|mrotx
+box mn_got|$xmat
+box mn_want|1 0 0 0 0 0 -1 0 0 1 0 0 0 0 0 1
+box mn_next|x_mvec
+jump mncheck|m
+
+premark x_mvec
+high.m3d.mvec mv|$zmat|1 0 0
+box mn_name|mvec-rotz
+box mn_got|$mv
+box mn_want|0 1 0
+box mn_next|x_quat
+jump mncheck|m
+
+// --- quaternions --------------------------------------------------------------
+premark x_quat
+high.m3d.qaxis q1|0|0|1|90
+box mn_name|qaxis
+box mn_got|$q1
+box mn_want|0.707107 0 0 0.707107
+box mn_next|x_qrot
+jump mncheck|m
+
+premark x_qrot
+high.m3d.qrot qv|$q1|1 0 0
+box mn_name|qrot
+box mn_got|$qv
+box mn_want|0 1 0
+box mn_next|x_qmul
+jump mncheck|m
+
+premark x_qmul
+high.m3d.qmul qm|$q1|$q1
+box mn_name|qmul
+box mn_got|$qm
+box mn_want|0 0 0 1
+box mn_next|x_qconj
+jump mncheck|m
+
+premark x_qconj
+high.m3d.qconj qc|$q1
+box mn_name|qconj
+box mn_got|$qc
+box mn_want|0.707107 0 0 -0.707107
+box mn_next|x_done
+jump mncheck|m
+
+premark x_done
+say math tests done, failures: $mathfail
+end
+
+// --- checker ---------------------------------------------------------------
+premark mncheck
+jumpif $mn_got|!==|$mn_want|m_fail|m
+say PASS
+jump $mn_next|m
+
+premark m_fail
+say FAIL $mn_name: got [$mn_got] want [$mn_want]
+math mathfail|1|$mathfail|+
+end

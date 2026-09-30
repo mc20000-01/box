@@ -1,0 +1,70 @@
+// name: math3d
+// version: 1.0.0
+// author: boxedlang
+// description: Friendly 3D vector helpers over high.m3d: norm length dot cross dist add sub scale
+// deps: none
+//
+// Friendly vector math wrapping the math3d library commands.
+//
+//   box m3_op|dist
+//   box m3_a|0 0 0
+//   box m3_b|3 4 0
+//   umload require|math3d|back
+//   say $m3_out
+//   premark back
+//
+// Inputs:
+//   $m3_op    norm | length | dot | cross | dist | addv | subv | scalev
+//   $m3_v     single vector string like "1 2 3"
+//   $m3_a     first vector string
+//   $m3_b     second vector string
+//   $m3_s     scalar for scalev
+//
+// Output:
+//   $m3_out   resulting vector (or scalar length/dist)
+
+lib load|math
+box m3_out|
+
+jumpif $m3_op|==|norm|d_norm|m
+jumpif $m3_op|==|length|d_length|m
+jumpif $m3_op|==|dot|d_dot|m
+jumpif $m3_op|==|cross|d_cross|m
+jumpif $m3_op|==|dist|d_dist|m
+jumpif $m3_op|==|addv|d_addv|m
+jumpif $m3_op|==|subv|d_subv|m
+jumpif $m3_op|==|scalev|d_scalev|m
+end
+
+premark d_norm
+high.m3d.vnorm m3_out|$m3_v
+end
+
+premark d_length
+high.m3d.vlen m3_out|$m3_v
+end
+
+premark d_dot
+high.m3d.vdot m3_out|$m3_a|$m3_b
+end
+
+premark d_cross
+high.m3d.vcross m3_out|$m3_a|$m3_b
+end
+
+premark d_dist
+high.m3d.vsub m3_t|$m3_a|$m3_b
+high.m3d.vlen m3_out|$m3_t
+end
+
+premark d_addv
+high.m3d.vadd m3_out|$m3_a|$m3_b
+end
+
+premark d_subv
+high.m3d.vsub m3_out|$m3_a|$m3_b
+end
+
+premark d_scalev
+high.m3d.vscale m3_out|$m3_v|$m3_s
+end

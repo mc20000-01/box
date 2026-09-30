@@ -1,0 +1,23 @@
+// name: textwrap
+// version: 1.0.0
+// author: boxedlang
+// description: Word wrapping that depends on strutil
+// deps: strutil
+
+// wrap $tw_in at $tw_width characters, joined by $tw_sep, result in $tw_out
+// tw_sep defaults to a newline when not set
+box tw_out|
+
+jumpif $tw_op|==|wrap|tw_wrap|m
+jumpif $tw_op|==|indent|tw_indent|m
+end
+
+premark tw_wrap
+str tw_a|wrap|$tw_in|$tw_width|$tw_sep
+box tw_out|$tw_a
+end
+
+premark tw_indent
+str tw_pad|pad|$tw_in|$tw_width
+box tw_out|$tw_pad
+end

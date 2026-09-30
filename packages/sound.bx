@@ -1,0 +1,81 @@
+// name: sound
+// version: 1.0.0
+// author: boxedlang
+// description: Friendly sound helpers over high.snd: beep tones notes arpeggio render export
+// deps: none
+//
+// Friendly wrappers for the sound library, dispatching on an op box. The
+// sound mix persists across calls, so compose note/beep/tone ops freely and
+// then finish with render/export.
+//
+//   box sn_op|beep
+//   umload require|sound|back
+//   premark back
+//
+// Inputs:
+//   $sn_op     beep | beepf | tone | playnote | arpeggio | render | export | clear
+//   $sn_f      frequency for beepf/tone
+//   $sn_d      duration in seconds
+//   $sn_w      waveform name (sine square saw tri noise)
+//   $sn_v      volume 0-1
+//   $sn_name   note name like C4 or F#3
+//   $sn_notes  space separated note names for arpeggio
+//   $sn_path   file path for export
+//
+// Output:
+//   $sn_out    ok (or status/sample count)
+
+lib load|snd
+box sn_out|
+
+jumpif $sn_op|==|beep|d_beep|m
+jumpif $sn_op|==|beepf|d_beepf|m
+jumpif $sn_op|==|tone|d_tone|m
+jumpif $sn_op|==|playnote|d_playnote|m
+jumpif $sn_op|==|arpeggio|d_arpeggio|m
+jumpif $sn_op|==|render|d_render|m
+jumpif $sn_op|==|export|d_export|m
+jumpif $sn_op|==|clear|d_clear|m
+end
+
+premark d_beep
+high.snd.tone sn_t|440|0.15|sine|0.5
+box sn_out|ok
+end
+
+premark d_beepf
+high.snd.tone sn_t|$sn_f|$sn_d|sine|0.5
+box sn_out|ok
+end
+
+premark d_tone
+high.snd.tone sn_t|$sn_f|$sn_d|$sn_w|$sn_v
+box sn_out|ok
+end
+
+premark d_playnote
+high.snd.midi sn_m|$sn_name
+high.snd.note sn_n|$sn_m|$sn_d|sine|0.5
+box sn_out|ok
+end
+
+premark d_arpeggio
+high.snd.melody sn_c|$sn_notes|$sn_d|sine|0.5
+box sn_out|$sn_c
+end
+
+premark d_render
+high.snd.render sn_r
+box sn_out|$sn_r
+end
+
+premark d_export
+high.snd.render sn_r
+high.snd.wav sn_w|$sn_path
+box sn_out|$sn_w
+end
+
+premark d_clear
+high.snd.clear
+box sn_out|ok
+end

@@ -1,0 +1,148 @@
+// name: advmath
+// version: 1.0.0
+// author: boxedlang
+// description: Friendly integer math: double halve triple square cube even odd neg abs min max mod percent sign clamp
+// deps: none
+//
+// Tiny math helpers for everyday programs, dispatching on an op box.
+//
+//   box m_op|pctp
+//   box m_a|8
+//   box m_b|50
+//   umload require|advmath|back
+//   say $m_out
+//   premark back
+//
+// Inputs:
+//   $m_op    double | halve | triple | square | cube | iseven | isodd
+//            neg | absv | min2 | max2 | mod2 | pctp | signv | clamp
+//   $m_a     first integer (clamp/v)
+//   $m_b     second integer (clamp/lo)
+//   $m_c     third integer (clamp/hi)
+//
+// Output:
+//   $m_out   result
+
+box m_out|
+
+jumpif $m_op|==|double|d_double|m
+jumpif $m_op|==|halve|d_halve|m
+jumpif $m_op|==|triple|d_triple|m
+jumpif $m_op|==|square|d_square|m
+jumpif $m_op|==|cube|d_cube|m
+jumpif $m_op|==|iseven|d_iseven|m
+jumpif $m_op|==|isodd|d_isodd|m
+jumpif $m_op|==|neg|d_neg|m
+jumpif $m_op|==|absv|d_absv|m
+jumpif $m_op|==|min2|d_min2|m
+jumpif $m_op|==|max2|d_max2|m
+jumpif $m_op|==|mod2|d_mod2|m
+jumpif $m_op|==|pctp|d_pctp|m
+jumpif $m_op|==|signv|d_signv|m
+jumpif $m_op|==|clamp|d_clamp|m
+end
+
+premark d_double
+math m_out|$m_a|2|*
+end
+
+premark d_halve
+math m_out|$m_a|2|/
+end
+
+premark d_triple
+math m_out|$m_a|3|*
+end
+
+premark d_square
+math m_out|$m_a|$m_a|*
+end
+
+premark d_cube
+math m_t|$m_a|$m_a|*
+math m_out|$m_t|$m_a|*
+end
+
+premark d_iseven
+math m_r|$m_a|2|%
+jumpif $m_r|==|0|d_even|m
+box m_out|0
+end
+
+premark d_even
+box m_out|1
+end
+
+premark d_isodd
+math m_r|$m_a|2|%
+jumpif $m_r|==|0|d_even|m
+box m_out|1
+end
+
+premark d_neg
+math m_out|0|$m_a|-
+end
+
+premark d_absv
+jumpif $m_a|<|0|d_absneg|m
+box m_out|$m_a
+end
+
+premark d_absneg
+math m_out|0|$m_a|-
+end
+
+premark d_min2
+jumpif $m_a|<|$m_b|d_min_a|m
+box m_out|$m_b
+end
+
+premark d_min_a
+box m_out|$m_a
+end
+
+premark d_max2
+jumpif $m_a|>|$m_b|d_max_a|m
+box m_out|$m_b
+end
+
+premark d_max_a
+box m_out|$m_a
+end
+
+premark d_mod2
+math m_out|$m_a|$m_b|%
+end
+
+premark d_pctp
+math m_t|$m_a|100|*
+math m_out|$m_t|$m_b|/
+end
+
+premark d_signv
+jumpif $m_a|==|0|d_sg0|m
+jumpif $m_a|<|0|d_sgneg|m
+box m_out|1
+end
+
+premark d_sg0
+box m_out|0
+end
+
+premark d_sgneg
+box m_out|-1
+end
+
+premark d_clamp
+jumpif $m_a|<|$m_b|d_cl_lo|m
+jumpif $m_a|>|$m_c|d_cl_hi|m
+box m_out|$m_a
+end
+
+premark d_cl_lo
+box m_out|$m_b
+end
+
+premark d_cl_hi
+box m_out|$m_c
+end

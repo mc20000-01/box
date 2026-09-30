@@ -1,0 +1,140 @@
+// GFX library tests: colors, theme parsing, element creation, lookup and
+// mutation, and cleanup. The gfx library must be compiled into this build.
+
+box gfxfail|0
+
+lib load|gfx
+
+jump g_colors|m
+
+// --- colors ---------------------------------------------------------------
+premark g_colors
+high.gfx.color c3|#ff8800
+high.gfx.colorhex ch|$c3
+box gf_name|color
+box gf_got|$ch
+box gf_want|#ff8800
+box gf_next|g_short
+jump gcheck|m
+
+premark g_short
+high.gfx.color c1|#fff
+box gf_name|color-short
+box gf_got|$c1
+box gf_want|4294967295
+box gf_next|g_theme
+jump gcheck|m
+
+// --- theme parsing --------------------------------------------------------
+premark g_theme
+high.gfx.theme th|[c#f00.h#0f0.r$8.t%50.x#00f.b#111]
+box gf_name|theme
+box gf_got|$th
+box gf_want|c-16776961 h16711935 r8 t50 x65535 b286331391
+box gf_next|g_theme_bad
+jump gcheck|m
+
+// out-of-order tags are rejected and leave the box empty
+premark g_theme_bad
+high.gfx.theme bad|[c#f00.x#00f.h#0f0.r$8.t%50.b#111]
+box gf_name|theme-bad
+box gf_got|$bad
+box gf_want|
+box gf_next|g_carets
+jump gcheck|m
+
+// ^^ inherits the newest theme, ^^^^^ walks back four deep
+premark g_carets
+high.gfx.theme c1|[c#100.h#200.r$1.t%10.x#300.b#400]
+high.gfx.theme c2|[c#111.h#211.r$2.t%20.x#311.b#411]
+high.gfx.theme c3|[c#122.h#222.r$3.t%30.x#322.b#422]
+high.gfx.theme c4|[c#133.h#233.r$4.t%40.x#333.b#433]
+high.gfx.theme i2|^^^
+high.gfx.theme i4|^^^^^
+box gf_name|carets
+box gf_got|$i2
+box gf_want|c287449855 h572662527 r3 t30 x857875199 b1143087871
+box gf_next|g_carets_deep
+jump gcheck|m
+
+premark g_carets_deep
+box gf_got|$i4
+box gf_want|c285212927 h570425599 r1 t10 x855638271 b1140850943
+box gf_next|g_new
+jump gcheck|m
+
+// --- create ---------------------------------------------------------------
+premark g_new
+high.gfx.new 1|0|button|10|20|100|30|[c#fff.h#000.r$4.t%100.x#000.b#eee]|btn
+box gf_name|new-id
+box gf_got|$1
+box gf_want|1
+box gf_next|g_autoid
+jump gcheck|m
+
+// auto-assigned ids start at 1+ and do not collide with explicit ids
+premark g_autoid
+high.gfx.new 0|1|panel|0|0|200|100
+box gf_name|auto-id
+box gf_got|$0
+box gf_want|2
+box gf_next|g_text
+jump gcheck|m
+
+// --- text and field access ------------------------------------------------
+premark g_text
+high.gfx.set 1|text|OK
+high.gfx.get 1|text|gt
+box gf_name|get-text
+box gf_got|$gt
+box gf_want|OK
+box gf_next|g_type
+jump gcheck|m
+
+premark g_type
+high.gfx.get 1|type|gty
+box gf_name|get-type
+box gf_got|$gty
+box gf_want|button
+box gf_next|g_missing
+jump gcheck|m
+
+premark g_missing
+high.gfx.get 99|text|gm
+box gf_name|get-missing
+box gf_got|$gm
+box gf_want|
+box gf_next|g_count
+jump gcheck|m
+
+premark g_count
+high.gfx.count gc
+box gf_name|count
+box gf_got|$gc
+box gf_want|2
+box gf_next|g_clear
+jump gcheck|m
+
+premark g_clear
+high.gfx.clear
+high.gfx.count gc
+box gf_name|clear
+box gf_got|$gc
+box gf_want|0
+box gf_next|g_done
+jump gcheck|m
+
+premark g_done
+say gfx tests done, failures: $gfxfail
+end
+
+// --- checker --------------------------------------------------------------
+premark gcheck
+jumpif $gf_got|!==|$gf_want|g_fail|m
+say PASS
+jump $gf_next|m
+
+premark g_fail
+say FAIL $gf_name: got [$gf_got] want [$gf_want]
+math gfxfail|1|$gfxfail|+
+end

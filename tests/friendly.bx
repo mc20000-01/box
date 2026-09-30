@@ -1,0 +1,349 @@
+// Friendly wrapper package tests. Each test sets op/input boxes, requires the
+// package (running its module inline), resumes at a mark, and asserts the
+// output box. The runner needs the local ./packages/ checkout to resolve the
+// packages, exactly like tests/packages.bx.
+box fr_fail|0
+jump f_advmath|m
+
+premark fcheck
+jumpif $fr_got|!==|$fr_want|fr_fail|m
+say PASS $fr_name
+jump $fr_next|m
+
+premark fr_fail
+math fr_fail|$fr_fail|1|+
+say FAIL $fr_name got [$fr_got] want [$fr_want]
+jump $fr_next|m
+
+// ---- advmath ----
+premark f_advmath
+box m_op|double
+box m_a|21
+umload require|advmath|f_ad_double
+premark f_ad_double
+box fr_name|adv-double
+box fr_got|$m_out
+box fr_want|42
+box fr_next|f_ad_cube
+jump fcheck|m
+
+premark f_ad_cube
+box m_op|cube
+box m_a|3
+umload require|advmath|f_ad_cube1
+premark f_ad_cube1
+box fr_name|adv-cube
+box fr_got|$m_out
+box fr_want|27
+box fr_next|f_ad_halve
+jump fcheck|m
+
+premark f_ad_halve
+box m_op|halve
+box m_a|27
+umload require|advmath|f_ad_halve1
+premark f_ad_halve1
+box fr_name|adv-halve
+box fr_got|$m_out
+box fr_want|13
+box fr_next|f_ad_pctp
+jump fcheck|m
+
+premark f_ad_pctp
+box m_op|pctp
+box m_a|8
+box m_b|50
+umload require|advmath|f_ad_pctp1
+premark f_ad_pctp1
+box fr_name|adv-pctp
+box fr_got|$m_out
+box fr_want|16
+box fr_next|f_ad_even
+jump fcheck|m
+
+premark f_ad_even
+box m_op|iseven
+box m_a|4
+umload require|advmath|f_ad_even1
+premark f_ad_even1
+box fr_name|adv-iseven
+box fr_got|$m_out
+box fr_want|1
+box fr_next|f_ad_odd
+jump fcheck|m
+
+premark f_ad_odd
+box m_op|isodd
+box m_a|7
+umload require|advmath|f_ad_odd1
+premark f_ad_odd1
+box fr_name|adv-isodd
+box fr_got|$m_out
+box fr_want|1
+box fr_next|f_ad_oddnot
+jump fcheck|m
+
+premark f_ad_oddnot
+box m_op|isodd
+box m_a|6
+umload require|advmath|f_ad_oddn1
+premark f_ad_oddn1
+box fr_name|adv-iseven-not
+box fr_got|$m_out
+box fr_want|0
+box fr_next|f_ad_neg
+jump fcheck|m
+
+premark f_ad_neg
+box m_op|neg
+box m_a|5
+umload require|advmath|f_ad_neg1
+premark f_ad_neg1
+box fr_name|adv-neg
+box fr_got|$m_out
+box fr_want|-5
+box fr_next|f_ad_abs
+jump fcheck|m
+
+premark f_ad_abs
+box m_op|absv
+box m_a|-9
+umload require|advmath|f_ad_abs1
+premark f_ad_abs1
+box fr_name|adv-abs
+box fr_got|$m_out
+box fr_want|9
+box fr_next|f_ad_min
+jump fcheck|m
+
+premark f_ad_min
+box m_op|min2
+box m_a|3
+box m_b|7
+umload require|advmath|f_ad_min1
+premark f_ad_min1
+box fr_name|adv-min2
+box fr_got|$m_out
+box fr_want|3
+box fr_next|f_ad_max
+jump fcheck|m
+
+premark f_ad_max
+box m_op|max2
+box m_a|3
+box m_b|7
+umload require|advmath|f_ad_max1
+premark f_ad_max1
+box fr_name|adv-max2
+box fr_got|$m_out
+box fr_want|7
+box fr_next|f_ad_mod
+jump fcheck|m
+
+premark f_ad_mod
+box m_op|mod2
+box m_a|14
+box m_b|3
+umload require|advmath|f_ad_mod1
+premark f_ad_mod1
+box fr_name|adv-mod2
+box fr_got|$m_out
+box fr_want|2
+box fr_next|f_ad_sign
+jump fcheck|m
+
+premark f_ad_sign
+box m_op|signv
+box m_a|-5
+umload require|advmath|f_ad_sign1
+premark f_ad_sign1
+box fr_name|adv-sign-neg
+box fr_got|$m_out
+box fr_want|-1
+box fr_next|f_ad_signz
+jump fcheck|m
+
+premark f_ad_signz
+box m_op|signv
+box m_a|0
+umload require|advmath|f_ad_signz1
+premark f_ad_signz1
+box fr_name|adv-sign-zero
+box fr_got|$m_out
+box fr_want|0
+box fr_next|f_ad_clamp_lo
+jump fcheck|m
+
+premark f_ad_clamp_lo
+box m_op|clamp
+box m_a|-3
+box m_b|0
+box m_c|10
+umload require|advmath|f_ad_clo1
+premark f_ad_clo1
+box fr_name|adv-clamp-low
+box fr_got|$m_out
+box fr_want|0
+box fr_next|f_ad_clamp_hi
+jump fcheck|m
+
+premark f_ad_clamp_hi
+box m_op|clamp
+box m_a|15
+box m_b|0
+box m_c|10
+umload require|advmath|f_ad_chi1
+premark f_ad_chi1
+box fr_name|adv-clamp-high
+box fr_got|$m_out
+box fr_want|10
+box fr_next|f_ad_clamp_in
+jump fcheck|m
+
+premark f_ad_clamp_in
+box m_op|clamp
+box m_a|7
+box m_b|0
+box m_c|10
+umload require|advmath|f_ad_cin1
+premark f_ad_cin1
+box fr_name|adv-clamp-in
+box fr_got|$m_out
+box fr_want|7
+box fr_next|f_math3d
+jump fcheck|m
+
+// ---- math3d ----
+premark f_math3d
+box m3_op|length
+box m3_v|1 2 2
+umload require|math3d|f_m3_len
+premark f_m3_len
+box fr_name|m3d-length
+box fr_got|$m3_out
+box fr_want|3
+box fr_next|f_m3_norm
+jump fcheck|m
+
+premark f_m3_norm
+box m3_op|norm
+box m3_v|3 4 0
+umload require|math3d|f_m3_norm1
+premark f_m3_norm1
+box fr_name|m3d-norm
+box fr_got|$m3_out
+box fr_want|0.6 0.8 0
+box fr_next|f_m3_dot
+jump fcheck|m
+
+premark f_m3_dot
+box m3_op|dot
+box m3_a|1 2 3
+box m3_b|4 5 6
+umload require|math3d|f_m3_dot1
+premark f_m3_dot1
+box fr_name|m3d-dot
+box fr_got|$m3_out
+box fr_want|32
+box fr_next|f_m3_cross
+jump fcheck|m
+
+premark f_m3_cross
+box m3_op|cross
+box m3_a|1 0 0
+box m3_b|0 1 0
+umload require|math3d|f_m3_cross1
+premark f_m3_cross1
+box fr_name|m3d-cross
+box fr_got|$m3_out
+box fr_want|0 0 1
+box fr_next|f_m3_dist
+jump fcheck|m
+
+premark f_m3_dist
+box m3_op|dist
+box m3_a|0 0 0
+box m3_b|3 4 0
+umload require|math3d|f_m3_dist1
+premark f_m3_dist1
+box fr_name|m3d-dist
+box fr_got|$m3_out
+box fr_want|5
+box fr_next|f_m3_sub
+jump fcheck|m
+
+premark f_m3_sub
+box m3_op|subv
+box m3_a|3 4 0
+box m3_b|1 1 1
+umload require|math3d|f_m3_sub1
+premark f_m3_sub1
+box fr_name|m3d-sub
+box fr_got|$m3_out
+box fr_want|2 3 -1
+box fr_next|f_m3_scale
+jump fcheck|m
+
+premark f_m3_scale
+box m3_op|scalev
+box m3_v|1 2 3
+box m3_s|0.5
+umload require|math3d|f_m3_scale1
+premark f_m3_scale1
+box fr_name|m3d-scale
+box fr_got|$m3_out
+box fr_want|0.5 1 1.5
+box fr_next|f_sound
+jump fcheck|m
+
+// ---- sound ----
+premark f_sound
+box sn_op|arpeggio
+box sn_notes|C4 E4 G4
+box sn_d|0.02
+umload require|sound|f_snd_arp
+premark f_snd_arp
+box fr_name|snd-arpeggio-count
+box fr_got|$sn_out
+box fr_want|3
+box fr_next|f_snd_beep
+jump fcheck|m
+
+premark f_snd_beep
+box sn_op|beep
+umload require|sound|f_snd_beep1
+premark f_snd_beep1
+box fr_name|snd-beep
+box fr_got|$sn_out
+box fr_want|ok
+box fr_next|f_snd_export
+jump fcheck|m
+
+premark f_snd_export
+box sn_op|export
+box sn_path|.build/friendly.wav
+umload require|sound|f_snd_export1
+premark f_snd_export1
+box fr_name|snd-export
+box fr_got|$sn_out
+box fr_want|ok
+box fr_next|f_snd_render
+jump fcheck|m
+
+premark f_snd_render
+box sn_op|render
+umload require|sound|f_snd_render1
+premark f_snd_render1
+str fr_n|len|$sn_out
+box fr_got|1
+jumpif $fr_n|>|0|f_snd_ok
+box fr_got|0
+premark f_snd_ok
+box fr_name|snd-render-samples
+box fr_want|1
+box fr_next|f_done
+jump fcheck|m
+
+premark f_done
+say friendly package tests done, failures: $fr_fail
+end

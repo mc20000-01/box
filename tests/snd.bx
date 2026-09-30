@@ -1,0 +1,189 @@
+// Advanced SND: synthesis, frequency conversion, envelopes, melody, and WAV
+// export. The snd library must be compiled in and loaded with 'lib load|snd'.
+
+box sndfail|0
+lib load|snd
+
+// --- setup ---------------------------------------------------------------
+box sn_name|rate
+high.snd.init 22050
+high.snd.rate r
+box sn_got|$r
+box sn_want|22050
+box sn_next|x_freq_a4
+jump sncheck|m
+
+premark x_freq_a4
+high.snd.freq a4|69
+box sn_name|freq-a4
+box sn_got|$a4
+box sn_want|440.000
+box sn_next|x_freq_c4
+jump sncheck|m
+
+premark x_freq_c4
+high.snd.freq c4|60
+box sn_name|freq-c4
+box sn_got|$c4
+box sn_want|261.626
+box sn_next|x_midi_c4
+jump sncheck|m
+
+// --- note names ------------------------------------------------------------
+premark x_midi_c4
+high.snd.midi m1|C4
+box sn_name|midi-c4
+box sn_got|$m1
+box sn_want|60
+box sn_next|x_midi_bb3
+jump sncheck|m
+
+premark x_midi_bb3
+high.snd.midi m2|Bb3
+box sn_name|midi-flat
+box sn_got|$m2
+box sn_want|58
+box sn_next|x_midi_csharp
+jump sncheck|m
+
+premark x_midi_csharp
+high.snd.midi m3|C#4
+box sn_name|midi-sharp
+box sn_got|$m3
+box sn_want|61
+box sn_next|x_midi_bad
+jump sncheck|m
+
+premark x_midi_bad
+high.snd.midi m4|Q9
+box sn_name|midi-bad-name
+box sn_got|$m4
+box sn_want|-1
+box sn_next|x_voices0
+jump sncheck|m
+
+premark x_voices0
+high.snd.voices v0
+box sn_name|voices-empty
+box sn_got|$v0
+box sn_want|0
+box sn_next|x_tone
+jump sncheck|m
+
+// --- scheduling -------------------------------------------------------------
+premark x_tone
+high.snd.tone t1|440|0.1|sine|0.5
+box sn_name|tone-status
+box sn_got|$t1
+box sn_want|ok
+box sn_next|x_note
+jump sncheck|m
+
+premark x_note
+high.snd.note n1|69|0.1|square|0.5
+box sn_name|note-status
+box sn_got|$n1
+box sn_want|ok
+box sn_next|x_voices2
+jump sncheck|m
+
+premark x_voices2
+high.snd.voices v1
+box sn_name|voices-two
+box sn_got|$v1
+box sn_want|2
+box sn_next|x_render
+jump sncheck|m
+
+premark x_render
+high.snd.render rr
+box sn_name|render-first
+box sn_got|$rr
+box sn_want|2205
+box sn_next|x_clear
+jump sncheck|m
+
+premark x_clear
+high.snd.clear
+high.snd.voices v2
+box sn_name|voices-after-clear
+box sn_got|$v2
+box sn_want|0
+box sn_next|x_melody
+jump sncheck|m
+
+// --- friendly melody --------------------------------------------------------
+premark x_melody
+high.snd.melody ml|C4 D4 E4 F4|0.05|sine|0.5
+box sn_name|melody-count
+box sn_got|$ml
+box sn_want|4
+box sn_next|x_melody_voices
+jump sncheck|m
+
+premark x_melody_voices
+high.snd.voices v3
+box sn_name|melody-voices
+box sn_got|$v3
+box sn_want|4
+box sn_next|x_melody_render
+jump sncheck|m
+
+premark x_melody_render
+high.snd.render rr2
+box sn_name|melody-samples
+box sn_got|$rr2
+box sn_want|4409
+box sn_next|x_bad_melody
+jump sncheck|m
+
+premark x_bad_melody
+high.snd.clear
+high.snd.melody bm|C4 ZZZ9 E4|0.05
+box sn_name|melody-bad-note
+box sn_got|$bm
+box sn_want|-1
+box sn_next|x_env_note
+jump sncheck|m
+
+// --- default envelope --------------------------------------------------------
+premark x_env_note
+high.snd.env 0.1|0.1|0.5|0.1
+high.snd.note e1|60|0.2|saw|0.6
+box sn_name|envelope-note
+box sn_got|$e1
+box sn_want|ok
+box sn_next|x_env_render
+jump sncheck|m
+
+premark x_env_render
+high.snd.render rr3
+box sn_name|envelope-samples
+box sn_got|$rr3
+box sn_want|4410
+box sn_next|x_wav
+jump sncheck|m
+
+// --- WAV export ----------------------------------------------------------------
+premark x_wav
+high.snd.wav wst|.build/boxed-test.wav
+box sn_name|wav-status
+box sn_got|$wst
+box sn_want|ok
+box sn_next|x_done
+jump sncheck|m
+
+premark x_done
+say snd tests done, failures: $sndfail
+end
+
+// --- checker ---------------------------------------------------------------
+premark sncheck
+jumpif $sn_got|!==|$sn_want|s_fail|m
+say PASS
+jump $sn_next|m
+
+premark s_fail
+say FAIL $sn_name: got [$sn_got] want [$sn_want]
+math sndfail|1|$sndfail|+
+end

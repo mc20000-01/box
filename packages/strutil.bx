@@ -1,0 +1,56 @@
+// name: strutil
+// version: 1.0.0
+// author: boxedlang
+// description: Batch string transforms. Set $st_op and $st_in, require, read $st_out
+// deps: none
+//
+//   box st_op|slugify
+//   box st_in|The Quick Brown Fox
+//   umload require|strutil|back
+//   say $st_out
+//   premark back
+//
+// ops: slugify shout revwords padline title wrapat
+
+box st_out|
+
+jumpif $st_op|==|slugify|s_slugify|m
+jumpif $st_op|==|shout|s_shout|m
+jumpif $st_op|==|revwords|s_revwords|m
+jumpif $st_op|==|padline|s_padline|m
+jumpif $st_op|==|title|s_title|m
+jumpif $st_op|==|wrapat|s_wrapat|m
+end
+
+premark s_slugify
+str st_a|lower|$st_in
+str st_b|replace|$st_a| |-
+box st_out|$st_b
+end
+
+premark s_shout
+str st_a|upper|$st_in
+str st_b|join|!|$st_a
+box st_out|$st_b
+end
+
+premark s_revwords
+str st_a|split|$st_in| 
+str st_b|reverse|$st_a
+str st_out|replace|$st_b|-|
+end
+
+premark s_padline
+str st_a|center|$st_in|40
+box st_out|$st_a
+end
+
+premark s_title
+str st_a|titlecase|$st_in
+box st_out|$st_a
+end
+
+premark s_wrapat
+str st_a|chunks|$st_in|38|
+box st_out|$st_a
+end

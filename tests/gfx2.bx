@@ -1,0 +1,494 @@
+// Advanced GFX: framebuffer, primitives, colors, styles, transforms, and the
+// friendly element-based shape layer. The gfx library must be compiled in.
+//
+// Every assertion compares one value, because a box holds a single string and
+// the language has no string concatenation.
+
+box gxfail|0
+lib load|gfx
+
+// Start from a known 40x20 black framebuffer.
+high.gfx.fbsize 40|20
+high.gfx.fbclear
+high.gfx.fbinfo fb
+box gx_name|fb-size
+box gx_got|$fb
+box gx_want|40 20
+box gx_next|x_plot
+jump gxcheck|m
+
+// --- pixels ---------------------------------------------------------------
+premark x_plot
+high.gfx.plot 5|5|red
+high.gfx.pixel v|5|5
+box gx_name|plot-named-color
+box gx_got|$v
+box gx_want|0xff0000ff
+box gx_next|x_fbclear
+jump gxcheck|m
+
+// fbclear with a color really does set that color
+premark x_fbclear
+high.gfx.fbclear black
+high.gfx.pixel vc|0|0
+box gx_name|fbclear-opaque
+box gx_got|$vc
+box gx_want|0x000000ff
+box gx_next|x_alpha_blend
+jump gxcheck|m
+
+// out of bounds reads are transparent, and half alpha blends over nothing
+premark x_alpha_blend
+high.gfx.plot 9|9|#00ff0080
+high.gfx.pixel v2|9|9
+box gx_name|half-alpha
+box gx_got|$v2
+box gx_want|0x00ff00ff
+box gx_next|x_oob
+jump gxcheck|m
+
+premark x_oob
+high.gfx.pixel v3|999|999
+box gx_name|out-of-bounds
+box gx_got|$v3
+box gx_want|0x00000000
+box gx_next|x_rgb
+jump gxcheck|m
+
+// --- rect and frame -------------------------------------------------------
+premark x_rgb
+high.gfx.fbclear
+high.gfx.rect 0|0|5|3|blue
+high.gfx.rgb v4|4|2
+box gx_name|rect-far-corner
+box gx_got|$v4
+box gx_want|0 0 255 255
+box gx_next|x_rect_edge
+jump gxcheck|m
+
+premark x_rect_edge
+high.gfx.pixel v5|5|0
+box gx_name|rect-exclusive-edge
+box gx_got|$v5
+box gx_want|0x00000000
+box gx_next|x_frame
+jump gxcheck|m
+
+premark x_frame
+high.gfx.fbclear
+high.gfx.rect 0|0|5|3|white
+high.gfx.frame 0|0|5|3|lime
+high.gfx.pixel v6|2|1
+box gx_name|frame-leaves-interior
+box gx_got|$v6
+box gx_want|0xffffffff
+box gx_next|x_frame_edge
+jump gxcheck|m
+
+premark x_frame_edge
+high.gfx.pixel v7|0|0
+box gx_name|frame-corners
+box gx_got|$v7
+box gx_want|0x00ff00ff
+box gx_next|x_tri
+jump gxcheck|m
+
+// --- triangle -------------------------------------------------------------
+premark x_tri
+high.gfx.fbclear
+high.gfx.tri 0|0|19|0|0|19|orange
+high.gfx.pixel v8|1|1
+box gx_name|tri-inside
+box gx_got|$v8
+box gx_want|0xffa500ff
+box gx_next|x_tri_out
+jump gxcheck|m
+
+premark x_tri_out
+high.gfx.pixel v9|19|19
+box gx_name|tri-outside
+box gx_got|$v9
+box gx_want|0x00000000
+box gx_next|x_triline
+jump gxcheck|m
+
+premark x_triline
+high.gfx.fbclear
+high.gfx.triline 0|0|19|0|0|19|gold
+high.gfx.pixel v10|9|0
+box gx_name|triline-edge
+box gx_got|$v10
+box gx_want|0xffd700ff
+box gx_next|x_tri_hole
+jump gxcheck|m
+
+premark x_tri_hole
+high.gfx.pixel v11|9|8
+box gx_name|triline-hollow
+box gx_got|$v11
+box gx_want|0x00000000
+box gx_next|x_circle
+jump gxcheck|m
+
+// --- circle and ring ------------------------------------------------------
+premark x_circle
+high.gfx.fbclear
+high.gfx.circle 10|10|5|crimson
+high.gfx.pixel v12|10|14
+box gx_name|circle-fill
+box gx_got|$v12
+box gx_want|0xdc143cff
+box gx_next|x_ring
+jump gxcheck|m
+
+premark x_ring
+high.gfx.fbclear
+high.gfx.ring 10|10|5|teal
+high.gfx.pixel v13|10|10
+box gx_name|ring-hollow-center
+box gx_got|$v13
+box gx_want|0x00000000
+box gx_next|x_ring_edge
+jump gxcheck|m
+
+premark x_ring_edge
+high.gfx.pixel v14|10|15
+box gx_name|ring-edge
+box gx_got|$v14
+box gx_want|0x008080ff
+box gx_next|x_line
+jump gxcheck|m
+
+// --- line -----------------------------------------------------------------
+premark x_line
+high.gfx.fbclear
+high.gfx.line 0|0|9|0|cyan
+high.gfx.pixel v15|4|0
+box gx_name|line-on-axis
+box gx_got|$v15
+box gx_want|0x00ffffff
+box gx_next|x_line_off
+jump gxcheck|m
+
+premark x_line_off
+high.gfx.pixel v16|4|1
+box gx_name|line-is-thin
+box gx_got|$v16
+box gx_want|0x00000000
+box gx_next|x_diag
+jump gxcheck|m
+
+// Bresenham diagonals must stay connected with no gaps.
+premark x_diag
+high.gfx.fbclear
+high.gfx.line 0|0|9|9|silver
+high.gfx.pixel v33a|5|5
+box gx_name|line-diagonal-continuous
+box gx_got|$v33a
+box gx_want|0xc0c0c0ff
+box gx_next|x_diag_off
+jump gxcheck|m
+
+premark x_diag_off
+high.gfx.pixel v33b|5|6
+box gx_name|line-diagonal-thin
+box gx_got|$v33b
+box gx_want|0x00000000
+box gx_next|x_poly
+jump gxcheck|m
+
+// --- polygon --------------------------------------------------------------
+premark x_poly
+high.gfx.fbclear
+high.gfx.poly 3|10|1|18|1|14|9|plum
+high.gfx.pixel v17|14|4
+box gx_name|poly-fill
+box gx_got|$v17
+box gx_want|0xdda0ddff
+box gx_next|x_clip
+jump gxcheck|m
+
+// --- clipping -------------------------------------------------------------
+premark x_clip
+high.gfx.fbclear
+high.gfx.clip 0|0|10|10
+high.gfx.rect 5|5|20|20|gold
+high.gfx.pixel v18|6|6
+box gx_name|clip-inside
+box gx_got|$v18
+box gx_want|0xffd700ff
+box gx_next|x_clip_out
+jump gxcheck|m
+
+premark x_clip_out
+high.gfx.pixel v19|12|6
+box gx_name|clip-blocks-outside
+box gx_got|$v19
+box gx_want|0x00000000
+box gx_next|x_clipreset
+jump gxcheck|m
+
+premark x_clipreset
+high.gfx.clipreset
+high.gfx.rect 30|15|8|4|gold
+high.gfx.pixel v20|31|16
+box gx_name|clipreset-restores
+box gx_got|$v20
+box gx_want|0xffd700ff
+box gx_next|x_grad
+jump gxcheck|m
+
+// --- gradients ------------------------------------------------------------
+premark x_grad
+high.gfx.fbclear
+high.gfx.gradv 0|0|4|4|black|white
+high.gfx.rgb v21|0|0
+box gx_name|grad-top
+box gx_got|$v21
+box gx_want|0 0 0 255
+box gx_next|x_grad_end
+jump gxcheck|m
+
+premark x_grad_end
+high.gfx.rgb v22|0|3
+box gx_name|grad-bottom
+box gx_got|$v22
+box gx_want|255 255 255 255
+box gx_next|x_grad_mid
+jump gxcheck|m
+
+premark x_grad_mid
+high.gfx.rgb v23|0|1
+box gx_name|grad-quarter
+box gx_got|$v23
+box gx_want|84 84 84 255
+box gx_next|x_gradh
+jump gxcheck|m
+
+premark x_gradh
+high.gfx.fbclear
+high.gfx.gradh 0|0|8|2|navy|white
+high.gfx.rgb v24|7|0
+box gx_name|gradh-right
+box gx_got|$v24
+box gx_want|255 255 255 255
+box gx_next|x_gradh_left
+jump gxcheck|m
+
+premark x_gradh_left
+high.gfx.rgb v25|0|0
+box gx_name|gradh-left
+box gx_got|$v25
+box gx_want|0 0 128 255
+box gx_next|x_transform
+jump gxcheck|m
+
+// --- transforms -----------------------------------------------------------
+premark x_transform
+high.gfx.fbclear
+high.gfx.push
+high.gfx.translate 10|5
+high.gfx.rect 0|0|3|3|teal
+high.gfx.pop
+high.gfx.pixel v26|11|6
+box gx_name|translate-applies
+box gx_got|$v26
+box gx_want|0x008080ff
+box gx_next|x_transform_off
+jump gxcheck|m
+
+premark x_transform_off
+high.gfx.pixel v27|1|1
+box gx_name|pop-restores
+box gx_got|$v27
+box gx_want|0x00000000
+box gx_next|x_scale
+jump gxcheck|m
+
+premark x_scale
+high.gfx.fbclear
+high.gfx.push
+high.gfx.scale 2|2
+high.gfx.rect 1|1|2|2|olive
+high.gfx.pop
+high.gfx.pixel v28|2|2
+box gx_name|scale-doubles
+box gx_got|$v28
+box gx_want|0x808000ff
+box gx_next|x_rotate
+jump gxcheck|m
+
+// Rotating the segment (6,6)-(14,6) by 45 degrees sends it to roughly
+// (0,8)-(6,14), so the centre pixel moves to (3,11) and the original
+// horizontal run must be gone.
+premark x_rotate
+high.gfx.fbclear
+high.gfx.push
+high.gfx.rotate 45
+high.gfx.line 6|6|14|6|indigo
+high.gfx.pop
+high.gfx.pixel v29|3|11
+box gx_name|rotate-45
+box gx_got|$v29
+box gx_want|0x4b0082ff
+box gx_next|x_rotate_gone
+jump gxcheck|m
+
+premark x_rotate_gone
+high.gfx.pixel v30|10|6
+box gx_name|rotate-moves-pixels
+box gx_got|$v30
+box gx_want|0x00000000
+box gx_next|x_named
+jump gxcheck|m
+
+// --- named colors and color math -----------------------------------------
+premark x_named
+high.gfx.named c1|teal
+box gx_name|named-color
+box gx_got|$c1
+box gx_want|0x008080ff
+box gx_next|x_named_bad
+jump gxcheck|m
+
+premark x_named_bad
+high.gfx.named c2|notacolour
+box gx_name|named-unknown-empty
+box gx_got|$c2
+box gx_want|
+box gx_next|x_lerp
+jump gxcheck|m
+
+premark x_lerp
+high.gfx.lerp c3|black|white|128
+box gx_name|lerp-endpoint-setup
+box gx_got|$c3
+box gx_want|0x7f7f7fff
+box gx_next|x_lerp_mid
+jump gxcheck|m
+
+premark x_lerp_mid
+high.gfx.fbclear
+high.gfx.plot 0|0|$c3
+high.gfx.rgb v31|0|0
+box gx_name|lerp-midpoint
+box gx_got|$v31
+box gx_want|127 127 127 255
+box gx_next|x_alpha
+jump gxcheck|m
+
+premark x_alpha
+high.gfx.alpha c4|white|128
+box gx_name|alpha-scale
+box gx_got|$c4
+box gx_want|0xffffff7f
+box gx_next|x_style
+jump gxcheck|m
+
+// --- style presets --------------------------------------------------------
+premark x_style
+high.gfx.style st|neon
+high.gfx.theme tc|$st
+box gx_name|style-is-theme
+box gx_got|$tc
+box gx_want|c973018367 h15073279 r8 t0 x-251661057 b168432383
+box gx_next|x_style_bad
+jump gxcheck|m
+
+premark x_style_bad
+high.gfx.style sb|notastyle
+box gx_name|style-unknown-empty
+box gx_got|$sb
+box gx_want|
+box gx_next|x_shape
+jump gxcheck|m
+
+// --- friendly element-based shapes ----------------------------------------
+premark x_shape
+high.gfx.shape sid|0|rect|2|2|6|4|0|0|blue
+box gx_name|shape-id
+box gx_got|$sid
+box gx_want|1
+box gx_next|x_render
+jump gxcheck|m
+
+premark x_render
+high.gfx.fbclear
+high.gfx.render
+high.gfx.pixel v32|3|3
+box gx_name|render-inside
+box gx_got|$v32
+box gx_want|0x0000ffff
+box gx_next|x_render_out
+jump gxcheck|m
+
+premark x_render_out
+high.gfx.pixel v33c|9|3
+box gx_name|render-outside
+box gx_got|$v33c
+box gx_want|0x00000000
+box gx_next|x_shape_kind
+jump gxcheck|m
+
+premark x_shape_kind
+high.gfx.shape sb2|0|sphere|0|0|0|0|0|0|red
+box gx_name|shape-bad-kind-rejected
+box gx_got|$sb2
+box gx_want|
+box gx_next|x_draw
+jump gxcheck|m
+
+premark x_draw
+high.gfx.fbclear
+high.gfx.draw 1
+high.gfx.pixel v34|4|4
+box gx_name|draw-single
+box gx_got|$v34
+box gx_want|0x0000ffff
+box gx_next|x_ascii
+jump gxcheck|m
+
+// --- ascii art ------------------------------------------------------------
+premark x_ascii
+high.gfx.fbclear
+high.gfx.rect 0|0|4|1|white
+high.gfx.ascii art|0|0|4|1
+str a1|take|$art|0|1
+box gx_name|ascii-first
+box gx_got|$a1
+box gx_want|@
+box gx_next|x_ascii_dark
+jump gxcheck|m
+
+premark x_ascii_dark
+high.gfx.ascii art2|20|10|4|1|abcde
+str a2|take|$art2|0|1
+box gx_name|ascii-dark-custom-ramp
+box gx_got|$a2
+box gx_want|a
+box gx_next|x_ppm
+jump gxcheck|m
+
+// --- ppm export -----------------------------------------------------------
+premark x_ppm
+high.gfx.ppm pst|.build/gfx2.ppm
+box gx_name|ppm-status
+box gx_got|$pst
+box gx_want|ok
+box gx_next|x_done
+jump gxcheck|m
+
+premark x_done
+say gfx2 tests done, failures: $gxfail
+end
+
+// --- checker --------------------------------------------------------------
+premark gxcheck
+jumpif $gx_got|!==|$gx_want|g_fail|m
+say PASS
+jump $gx_next|m
+
+premark g_fail
+say FAIL $gx_name: got [$gx_got] want [$gx_want]
+math gxfail|1|$gxfail|+
+end
