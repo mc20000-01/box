@@ -81,7 +81,9 @@ ui.set|toolbar|gap|8
 ui.set|toolbar|padx|12
 ui.layout|toolbar
 </code></pre>
-<p><code>ui.layout|FRAME</code> runs the arrangement and prints the result, which makes it easy to see what changed. <code>ui.list</code> shows every element with its geometry, and <code>ui.attach|FRAME|ID...</code> and <code>ui.detach|FRAME|ID</code> change who owns whom.</p>
+<p><code>ui.layout|FRAME</code> runs the arrangement and prints the result, which makes it easy to see what changed.</p>
+<p>Two things are worth knowing about how it behaves. It recurses: laying out a window lays out the toolbar inside it, which lays out the label inside that, so one call arranges a whole tree. And it writes absolute coordinates, because that is what <code>x</code> and <code>y</code> mean everywhere else in the layer, including docking. A child written with <code>x|12</code> inside a frame at <code>x|100</code> ends up at 100, not 112.</p>
+<p><code>minw</code> and <code>minh</code> are floors: a layout will not shrink an element below the size it says it needs. <code>ui.list</code> shows every element with its geometry, and <code>ui.attach|FRAME|ID...</code> and <code>ui.detach|FRAME|ID</code> change who owns whom.</p>
 <h2 id="docking">DOCKING</h2>
 <p>A pane can dock to an edge instead of taking a position.</p>
 <pre><code class="language-bx">ui.new|sidebar|pane|root
@@ -137,8 +139,28 @@ say $half
 <p>Enough to check that a curve is shaped the way you meant it, before anything moves.</p>
 <h2 id="switching-and-closing">SWITCHING AND CLOSING</h2>
 <p><code>ui.switch|PANE</code> brings a pane to the front. <code>ui.close|ID</code> removes an element and detaches it from its parent, which is why closing a pane leaves its frame's child count correct instead of leaving a hole.</p>
+<h2 id="drawing-it">DRAWING IT</h2>
+<p>The tree draws into the same framebuffer <code>high.gfx.*</code> uses, so a program can paint a background and then put a window on top of it.</p>
+<pre><code class="language-bx">lib load|gfx
+high.gfx.fbsize|480|260
+ui.init
+ui.new|win|frame
+ui.set|win|w|480
+ui.set|win|h|260
+ui.render|count
+say $count
+</code></pre>
+<p><code>ui.render</code> returns how many elements it drew into a box, and <code>ui.render|ppm|PATH</code> writes the framebuffer out as a PPM, which is how the tests check that a button is actually the colour it claims to be.</p>
+<p>Every kind knows how to draw itself: frames and panels get a fill and a border, labels get outlined text, a slider gets a track and a knob, a checkbox and a radio get their mark, a tab highlights when selected, and a spinner rotates using the frame counter.</p>
+<p>Text comes from the VGA 8x8 set in <code>src/bx_font8x8.h</code>, which the kernel's text console uses too, so the two cannot drift apart.</p>
+<h2 id="hit-testing">HIT TESTING</h2>
+<pre><code class="language-bx">ui.hit|30|50|under
+say $under
+</code></pre>
+<p><code>ui.hit</code> returns the name of the element under a point, or an empty string. Children are tested before their parents and higher <code>z</code> wins, so the answer is the thing actually being pointed at, not the window behind it. It also sets <code>hovered</code> on that element and clears it everywhere else, so hover follows the pointer instead of sticking to whatever it last touched.</p>
+<p><code>ui.press|ID|STATE</code> sets the pressed state and <code>ui.select|ID|STATE</code> the selected one. Selecting a radio selects its group, which is what a radio button means.</p>
 <h2 id="what-is-not-here-yet">WHAT IS NOT HERE YET</h2>
-<p>The layer computes geometry and motion; it does not yet draw. Wiring <code>ui.*</code> into <code>high.gfx.render</code> so the tree paints itself, adding hit testing so elements can be clicked, and building out the icon set as <code>bxvg</code> documents are all still ahead. What is here now is the part that is awkward to retrofit: names, structure, and time.</p>
+<p>Reading a real pointer, rather than a position a program supplies, and building out the icon set as <code>bxvg</code> documents are both still ahead. What is here now is the part that is awkward to retrofit: names, structure, time, and drawing.</p>
 <p class="next"><a href="index.html">All chapters</a></p>
 </div></div>
 </main>

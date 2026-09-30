@@ -24,13 +24,19 @@ QEMU_FLAGS = -m 256M -serial mon:stdio -display gtk,gl=on -kernel
 
 all: bx
 
-bx: src/bx.c src/bx_gfx.c src/bx_ui.c src/bx_wifi.c src/bx_thread_gpu.c src/bx_snd.c src/bx_math.c
-	$(CC) $(CFLAGS) -o bx src/bx.c src/bx_gfx.c src/bx_ui.c src/bx_wifi.c src/bx_thread_gpu.c src/bx_snd.c src/bx_math.c $(LDFLAGS)
+# The headers are prerequisites, not just the sources: editing a constant in
+# bx_ui.h and re-running make used to leave the old binary in place, which is
+# a silent wrong answer rather than a build failure.
+BX_SRC := src/bx.c src/bx_gfx.c src/bx_ui.c src/bx_wifi.c src/bx_thread_gpu.c src/bx_snd.c src/bx_math.c
+BX_HDR := $(wildcard src/*.h)
+
+bx: $(BX_SRC) $(BX_HDR)
+	$(CC) $(CFLAGS) -o bx $(BX_SRC) $(LDFLAGS)
 
 # Kernel build
 kernel: .build/kernel.elf
 
-.build/kernel.elf: src/kernel.S src/kernel.c src/x86_64-graphics.c src/kernel.ld
+.build/kernel.elf: src/kernel.S src/kernel.c src/x86_64-graphics.c src/kernel.ld src/bx_font8x8.h
 	@mkdir -p .build
 	$(KERNEL_CC) $(KERNEL_CFLAGS) -c src/kernel.S -o .build/kernel.S.o
 	$(KERNEL_CC) $(KERNEL_CFLAGS) -c src/kernel.c -o .build/kernel.c.o

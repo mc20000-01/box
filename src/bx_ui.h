@@ -38,6 +38,7 @@ extern "C" {
 #define BX_UI_MAX_ELEMENTS 1024
 #define BX_UI_MAX_TWEENS  256
 #define BX_UI_MAX_FNS     64
+#define BX_UI_MAX_CHILDREN 64
 #define BX_UI_FPS_DEFAULT 60
 
 /* Element kinds. Custom kinds start at BX_UI_KIND_CUSTOM so a user element
@@ -158,6 +159,8 @@ typedef struct {
 
     /* Input state, kept so a hit test and a redraw agree. */
     int      hovered, pressed, focused, disabled;
+    int      selected;         /* tabs, radio, checkbox: the "on" visual */
+    float    scroll;           /* 0..1, for scroll, list, and text */
 } bx_ui_element_t;
 
 /* An easing function. Every tween points at one by name. */
@@ -265,6 +268,27 @@ int  bx_ui_fn_default(const char *name);
 double bx_ui_ease(const char *name, double t);
 int  bx_ui_fn_count(void);
 const bx_ui_fn_t *bx_ui_fn_at(int index);
+
+/* --------------------------------------------------------------- render */
+/* Draw the tree into a framebuffer. Returns how many elements were drawn.
+ * The framebuffer must already be the right size; ui render clears nothing,
+ * so a caller can draw a background first. */
+int bx_ui_render(bx_gfx_fb_t *fb);
+/* Hit test: the topmost visible element whose rect contains (x,y), or NULL.
+ * Children are searched before parents, and higher z wins, so the answer is
+ * the thing the pointer is actually over. */
+bx_ui_element_t *bx_ui_hit(float x, float y);
+
+/* The site palette, as 0xRRGGBBAA: the framebuffer packs alpha last, so a
+ * color parsed from "#rrggbb" can be written here directly. */
+static const uint32_t BX_UI_C_BG        = 0x0B0F14FFu;
+static const uint32_t BX_UI_C_PANEL     = 0x131A22FFu;
+static const uint32_t BX_UI_C_INSET     = 0x0F151CFFu;
+static const uint32_t BX_UI_C_BORDER    = 0x233040FFu;
+static const uint32_t BX_UI_C_TEXT      = 0xD7E2EEFFu;
+static const uint32_t BX_UI_C_TEXT_DIM  = 0x8497ABFFu;
+static const uint32_t BX_UI_C_ACCENT    = 0x4FD6C4FFu;
+static const uint32_t BX_UI_C_ACCENT_DK = 0x2A8D81FFu;
 
 /* ---------------------------------------------------------------- clock */
 void bx_ui_clock_reset(int fps);

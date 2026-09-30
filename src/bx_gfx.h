@@ -57,7 +57,7 @@ const char * const *bx_gfx_style_names(int *count);
 /* ------------------------------------------------------------- framebuffer */
 
 typedef struct {
-    uint32_t *pixels;      /* w*h 0xAARRGGBB */
+    uint32_t *pixels;      /* w*h, one 0xRRGGBBAA word per pixel */
     int32_t  width, height;
     int32_t  clip_x, clip_y, clip_w, clip_h;   /* inclusive-exclusive rect */
     /* Inverse transform applied to every primitive, as a 3x3 matrix. Identity
@@ -100,6 +100,15 @@ void bx_gfx_tri(bx_gfx_fb_t *fb, float x0, float y0, float x1, float y1,
 void bx_gfx_tri_outline(bx_gfx_fb_t *fb, float x0, float y0, float x1, float y1,
                         float x2, float y2, uint32_t c);
 void bx_gfx_poly(bx_gfx_fb_t *fb, const float *pts, int32_t count, uint32_t c);
+
+/* Text, from the VGA 8x8 set in bx_font8x8.h. The glyphs are 8x8 with no
+ * inter-character spacing, which is what makes bx_gfx_text_w exact. */
+void     bx_gfx_text(bx_gfx_fb_t *fb, int32_t x, int32_t y, const char *s, uint32_t c);
+int32_t  bx_gfx_text_w(const char *s);
+int32_t  bx_gfx_text_h(void);
+/* Same, but a 1px outline in `edge` behind `c`, for text over a busy fill. */
+void     bx_gfx_text_outlined(bx_gfx_fb_t *fb, int32_t x, int32_t y,
+                              const char *s, uint32_t c, uint32_t edge);
 void bx_gfx_gradient_v(bx_gfx_fb_t *fb, int32_t x, int32_t y, int32_t w, int32_t h,
                        uint32_t top, uint32_t bottom);
 void bx_gfx_gradient_h(bx_gfx_fb_t *fb, int32_t x, int32_t y, int32_t w, int32_t h,

@@ -1,6 +1,7 @@
 /* BX GFX - software rasterizer, color model, and UI element tree.
  * See bx_gfx.h for the layout and the pixel format contract. */
 #include "bx_gfx.h"
+#include "bx_font8x8.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -416,6 +417,48 @@ void bx_gfx_poly(bx_gfx_fb_t *fb, const float *pts, int32_t count, uint32_t c) {
     for (int32_t i = 1; i + 1 < count; i++)
         bx_gfx_tri(fb, pts[0], pts[1], pts[i * 2], pts[i * 2 + 1], pts[(i + 1) * 2], pts[(i + 1) * 2 + 1], c);
 }
+
+/* Draw one glyph. The transform and the clip are honoured because the caller
+ * may have translated or scaled, and text that ignored both would land in the
+ * wrong place as soon as anything else did. */
+static void bx_gfx_glyph(bx_gfx_fb_t *fb, float x, float y, unsigned char ch, uint32_t c) {
+    if (ch < 32 || ch >= 128) ch = ' ';
+    const uint8_t *g = bx_font8x8[ch];
+    for (int yy = 0; yy < BX_FONT_H; yy++) {
+        uint8_t row = g[yy];
+        if (!row) continue;
+        for (int xx = 0; xx < BX_FONT_W; xx++) {
+            if (!(row & (0x80 >> xx))) continue;
+            float px = x + xx, py = y + yy, tx, ty;
+            bx_gfx_transform_point(fb, px, py, &tx, &ty);
+            bx_gfx_plot(fb, (int32_t)tx, (int32_t)ty, c);
+        }
+    }
+}
+
+void bx_gfx_text(bx_gfx_fb_t *fb, int32_t x, int32_t y, const char *s, uint32_t c) {
+    if (!s) return;
+    for (int i = 0; s[i]; i++)
+        bx_gfx_glyph(fb, (float)(x + i * BX_FONT_W), (float)y, (unsigned char)s[i], c);
+}
+
+void bx_gfx_text_outlined(bx_gfx_fb_t *fb, int32_t x, int32_t y,
+                          const char *s, uint32_t c, uint32_t edge) {
+    if (!s) return;
+    /* Four passes offset by a pixel, then the glyph on top: that is a border
+     * and costs the same as drawing the string five times. */
+    for (int i = 0; s[i]; i++)
+        for (int d = 0; d < 4; d++) {
+            float ox = (d == 0) ? -1 : (d == 1) ? 1 : 0;
+            float oy = (d == 2) ? -1 : (d == 3) ? 1 : 0;
+            bx_gfx_glyph(fb, (float)(x + i * BX_FONT_W) + ox, (float)y + oy,
+                         (unsigned char)s[i], edge);
+        }
+    bx_gfx_text(fb, x, y, s, c);
+}
+
+int32_t bx_gfx_text_w(const char *s) { return s ? (int32_t)strlen(s) * BX_FONT_W : 0; }
+int32_t bx_gfx_text_h(void) { return BX_FONT_H; }
 
 void bx_gfx_gradient_v(bx_gfx_fb_t *fb, int32_t x, int32_t y, int32_t w, int32_t h,
                        uint32_t top, uint32_t bottom) {

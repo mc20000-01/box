@@ -503,10 +503,29 @@ int bx_ui_tween_tick(float dt) {
 
 /* ---------------------------------------------------------------- layout */
 
-int bx_ui_layout_apply(const char *frame_id) {
-    bx_ui_element_t *f = bx_ui_find(frame_id);
-    if (!f) return -1;
+static int ui_layout_here(bx_ui_element_t *f);
 
+/* Lay out one frame's children, then recurse. Recursion is what makes a
+ * window system work: a toolbar inside a window has to know where the window
+ * is, and the window has to know where the toolbar is. */
+static int ui_layout_one(const char *frame_id, int depth) {
+    bx_ui_element_t *f = bx_ui_find(frame_id);
+    if (!f || depth > 32) return -1;
+
+    ui_layout_here(f);
+
+    for (int i = 0; i < f->child_count; i++) {
+        bx_ui_element_t *c = bx_ui_find(f->children[i]);
+        if (c && c->visible && c->child_count > 0) ui_layout_one(c->id, depth + 1);
+    }
+    return 0;
+}
+
+int bx_ui_layout_apply(const char *frame_id) {
+    return ui_layout_one(frame_id, 0);
+}
+
+static int ui_layout_here(bx_ui_element_t *f) {
     int n = f->child_count;
     if (n == 0) return 0;
 
@@ -584,6 +603,20 @@ int bx_ui_layout_apply(const char *frame_id) {
         }
         offset += extent + gap;
     }
+
+    /* Every layout writes children in the frame's own coordinates, so the
+     * frame's origin is added last, once, in one place. Doing it here rather
+     * than in each branch is what keeps a nested frame consistent with the
+     * dock code, which also works in absolute coordinates. */
+    for (int i = 0; i < n; i++) {
+        bx_ui_element_t *c = bx_ui_find(f->children[i]);
+        if (!c || !c->visible) continue;
+        if (f->layout != BX_UI_LAYOUT_NONE) { c->x += f->x; c->y += f->y; }
+        /* minw and minh are floors, so a layout cannot shrink an element
+         * below the size it says it needs. */
+        if (c->w < c->min_w) c->w = c->min_w;
+        if (c->h < c->min_h) c->h = c->min_h;
+    }
     return 0;
 }
 
@@ -629,4 +662,239 @@ void bx_ui_dock_apply(bx_ui_element_t *pane, const bx_gfx_fb_t *fb) {
         pane->x = px; pane->y = py; pane->w = aw; pane->h = ah; break;
     default: break;
     }
+}
+
+/* ---------------------------------------------------------------- render */
+
+/* An element's own fill. A colour set with ui.set wins over the kind's
+ * default, which is what makes a themed window possible without teaching the
+ * program about themes. */
+static uint32_t ui_fill_for(const bx_ui_element_t *e) {
+    if (BX_GFX_A(e->color)) return e->color;
+    switch (e->kind) {
+        case BX_UI_KIND_BUTTON: return BX_UI_C_ACCENT_DK;
+        case BX_UI_KIND_PANEL:
+        case BX_UI_KIND_MODAL:
+        case BX_UI_KIND_TOOLBAR: return BX_UI_C_PANEL;
+        case BX_UI_KIND_PANE:
+        case BX_UI_KIND_FRAME: return BX_UI_C_PANEL;
+        case BX_UI_KIND_SLIDER:
+        case BX_UI_KIND_PROGRESS:
+        case BX_UI_KIND_SCROLL: return BX_UI_C_INSET;
+        case BX_UI_KIND_CHECKBOX:
+        case BX_UI_KIND_RADIO: return BX_UI_C_BG;
+        default: return BX_UI_C_BG;
+    }
+}
+
+static uint32_t ui_text_for(const bx_ui_element_t *e) {
+    if (e->disabled) return BX_UI_C_TEXT_DIM;
+    if (e->kind == BX_UI_KIND_BUTTON) return BX_UI_C_TEXT;
+    return BX_UI_C_TEXT;
+}
+
+static void ui_text_center(bx_gfx_fb_t *fb, const bx_ui_element_t *e, uint32_t c) {
+    if (!e->text[0]) return;
+    int32_t tw = bx_gfx_text_w(e->text), th = bx_gfx_text_h();
+    int32_t tx = (int32_t)(e->x + (e->w - tw) / 2.0f);
+    int32_t ty = (int32_t)(e->y + (e->h - th) / 2.0f);
+    bx_gfx_text_outlined(fb, tx, ty, e->text, c, BX_UI_C_BG);
+}
+
+/* Fraction a slider or progress bar is at, from its text field. */
+static float ui_fraction(const bx_ui_element_t *e) {
+    double v = atof(e->value);
+    if (v <= 0.0 && e->value[0] != '0') return e->kind == BX_UI_KIND_PROGRESS ? 0.0f : 0.5f;
+    if (v > 1.0) return v > 100.0 ? 1.0f : (float)v;
+    return (float)v;
+}
+
+static int ui_draw_one(bx_gfx_fb_t *fb, bx_ui_element_t *e) {
+    int32_t x = (int32_t)e->x, y = (int32_t)e->y, w = (int32_t)e->w, h = (int32_t)e->h;
+    if (w <= 0 || h <= 0) return 0;
+
+    switch (e->kind) {
+        case BX_UI_KIND_FRAME:
+        case BX_UI_KIND_PANE:
+        case BX_UI_KIND_PANEL:
+        case BX_UI_KIND_MODAL:
+        case BX_UI_KIND_SIDEBAR:
+        case BX_UI_KIND_TOOLBAR:
+        case BX_UI_KIND_STATUSBAR:
+            bx_gfx_rect(fb, x, y, w, h, ui_fill_for(e));
+            bx_gfx_rect_outline(fb, x, y, w, h, BX_UI_C_BORDER);
+            break;
+        case BX_UI_KIND_BUTTON: {
+            uint32_t c = ui_fill_for(e);
+            /* A pressed button reads as pressed without any animation, which
+             * is the cheapest possible feedback. Lerp toward the background
+             * rather than fading alpha: a translucent button over a panel
+             * would show the panel through it and read as lighter, not
+             * pressed. */
+            if (e->pressed) c = bx_gfx_color_lerp(c, BX_UI_C_BG, 96);
+            else if (e->hovered) c = bx_gfx_color_lerp(c, BX_UI_C_ACCENT, 60);
+            bx_gfx_rect(fb, x, y, w, h, c);
+            bx_gfx_rect_outline(fb, x, y, w, h, BX_UI_C_ACCENT_DK);
+            ui_text_center(fb, e, ui_text_for(e));
+            break;
+        }
+        case BX_UI_KIND_LABEL:
+        case BX_UI_KIND_TEXT:
+        case BX_UI_KIND_MENUITEM:
+        case BX_UI_KIND_LISTITEM:
+        case BX_UI_KIND_TOOLTIP:
+            /* Text is outlined because it is drawn over a fill that may be
+             * any colour the program asked for. */
+            bx_gfx_text_outlined(fb, x, y + (h - bx_gfx_text_h()) / 2, e->text,
+                                 e->disabled ? BX_UI_C_TEXT_DIM : BX_UI_C_TEXT, BX_UI_C_BG);
+            break;
+        case BX_UI_KIND_TEXTBOX:
+        case BX_UI_KIND_LIST:
+        case BX_UI_KIND_TREE:
+        case BX_UI_KIND_MENU:
+            bx_gfx_rect(fb, x, y, w, h, BX_UI_C_INSET);
+            bx_gfx_rect_outline(fb, x, y, w, h, e->focused ? BX_UI_C_ACCENT : BX_UI_C_BORDER);
+            bx_gfx_text(fb, x + 4, y + (h - bx_gfx_text_h()) / 2, e->text, BX_UI_C_TEXT);
+            break;
+        case BX_UI_KIND_SLIDER:
+        case BX_UI_KIND_SCROLL: {
+            bx_gfx_rect(fb, x, y + h / 3, w, h / 3, BX_UI_C_INSET);
+            int32_t knob = w / 8;
+            if (knob < 4) knob = 4;
+            int32_t kx = x + (int32_t)(ui_fraction(e) * (w - knob));
+            bx_gfx_rect(fb, kx, y + h / 3 - 2, knob, h / 3 + 4, BX_UI_C_ACCENT);
+            break;
+        }
+        case BX_UI_KIND_PROGRESS:
+            bx_gfx_rect(fb, x, y + h / 3, w, h / 3, BX_UI_C_INSET);
+            bx_gfx_rect(fb, x, y + h / 3, (int32_t)(w * ui_fraction(e)), h / 3, BX_UI_C_ACCENT);
+            break;
+        case BX_UI_KIND_CHECKBOX: {
+            int32_t bs = h - 4; if (bs < 6) bs = 6;
+            bx_gfx_rect_outline(fb, x, y + 2, bs, bs, e->focused ? BX_UI_C_ACCENT : BX_UI_C_BORDER);
+            if (ui_fraction(e) > 0.0f)
+                bx_gfx_line(fb, x + 2, y + 2 + bs / 2, x + bs / 2, y + bs,
+                            BX_UI_C_ACCENT);
+            if (e->text[0])
+                bx_gfx_text(fb, x + bs + 6, y + (h - bx_gfx_text_h()) / 2, e->text, BX_UI_C_TEXT);
+            break;
+        }
+        case BX_UI_KIND_RADIO: {
+            int32_t r = (h < w ? h : w) / 2;
+            bx_gfx_circle_outline(fb, x + r, y + r, r, e->focused ? BX_UI_C_ACCENT : BX_UI_C_BORDER);
+            if (ui_fraction(e) > 0.0f) bx_gfx_circle(fb, x + r, y + r, r - 2, BX_UI_C_ACCENT);
+            if (e->text[0])
+                bx_gfx_text(fb, x + r * 2 + 6, y + (h - bx_gfx_text_h()) / 2, e->text, BX_UI_C_TEXT);
+            break;
+        }
+        case BX_UI_KIND_TABS:
+            bx_gfx_rect(fb, x, y, w, h, BX_UI_C_BG);
+            bx_gfx_line(fb, x, y + h - 1, x + w, y + h - 1, BX_UI_C_BORDER);
+            break;
+        case BX_UI_KIND_TAB:
+            bx_gfx_rect(fb, x, y, w, h, e->selected ? BX_UI_C_PANEL : BX_UI_C_BG);
+            bx_gfx_rect_outline(fb, x, y, w, h, e->selected ? BX_UI_C_ACCENT : BX_UI_C_BORDER);
+            ui_text_center(fb, e, e->selected ? BX_UI_C_ACCENT : BX_UI_C_TEXT_DIM);
+            break;
+        case BX_UI_KIND_SPINNER: {
+            /* A spinner is a spinner: an arc that grows. Frame-timing it is
+             * what makes it spin rather than sit. */
+            int32_t r = (h < w ? h : w) / 2 - 1;
+            if (r < 3) break;
+            int32_t segs = 8;
+            float spin = (float)(g_bx_ui.clock.frame % (uint64_t)segs);
+            for (int32_t i = 0; i < segs; i++) {
+                float a = (float)(i - spin) * 0.7853981634f;
+                int32_t px = x + w / 2 + (int32_t)(cosf(a) * r);
+                int32_t py = y + h / 2 + (int32_t)(sinf(a) * r);
+                bx_gfx_circle(fb, px, py, 1, i == 0 ? BX_UI_C_ACCENT : BX_UI_C_BORDER);
+            }
+            break;
+        }
+        case BX_UI_KIND_ICON:
+        case BX_UI_KIND_IMAGE:
+        case BX_UI_KIND_CANVAS:
+            /* Filled with the frame colour and outlined, so a document that
+             * fails to load is visibly empty rather than silently missing. */
+            bx_gfx_rect(fb, x, y, w, h, BX_UI_C_INSET);
+            bx_gfx_rect_outline(fb, x, y, w, h, BX_UI_C_BORDER);
+            if (e->text[0]) ui_text_center(fb, e, BX_UI_C_TEXT_DIM);
+            break;
+        case BX_UI_KIND_SHAPE:
+            bx_gfx_rect(fb, x, y, w, h, ui_fill_for(e));
+            break;
+        case BX_UI_KIND_TWEEN:
+            break;                    /* a tween has no appearance of its own */
+        default:
+            bx_gfx_rect(fb, x, y, w, h, ui_fill_for(e));
+            bx_gfx_rect_outline(fb, x, y, w, h, BX_UI_C_BORDER);
+            if (e->text[0]) ui_text_center(fb, e, ui_text_for(e));
+            break;
+    }
+    return 1;
+}
+
+/* Draw order: parent before children, and higher z first among siblings, so a
+ * raised pane covers what it was raised above. */
+static int ui_render_into(bx_gfx_fb_t *fb, const char *id, int depth) {
+    bx_ui_element_t *e = bx_ui_find(id);
+    if (!e || !e->visible || depth > 32) return 0;
+
+    int n = 0;
+    /* A stack, not a frame, because bx_ui.c is C99 with no VLAs in the
+     * kernel build and a window tree should not need one. */
+    int nc = e->child_count;
+    if (nc > BX_UI_MAX_CHILDREN) nc = BX_UI_MAX_CHILDREN;
+    /* Collect first, then sort a small pointer array by z: the element list
+     * must not be reordered, or ids would stop matching indices. */
+    bx_ui_element_t *kids[BX_UI_MAX_CHILDREN];
+    for (int i = 0; i < nc; i++) kids[i] = bx_ui_find(e->children[i]);
+    for (int i = 0; i < nc; i++)
+        for (int j = i + 1; j < nc; j++)
+            if (kids[j] && kids[i] && kids[j]->z > kids[i]->z) {
+                bx_ui_element_t *t = kids[i]; kids[i] = kids[j]; kids[j] = t;
+            }
+
+    n += ui_draw_one(fb, e);
+    for (int i = 0; i < nc; i++)
+        if (kids[i]) n += ui_render_into(fb, kids[i]->id, depth + 1);
+    return n;
+}
+
+int bx_ui_render(bx_gfx_fb_t *fb) {
+    if (!fb || !fb->pixels) return 0;
+    /* Roots only: an element whose parent is gone is a root too, otherwise a
+     * closed frame would take its children out of the display. */
+    int n = 0;
+    for (int i = 0; i < g_bx_ui.count; i++) {
+        bx_ui_element_t *e = &g_bx_ui.els[i];
+        if (!e->id[0]) continue;
+        if (e->parent[0] && bx_ui_find(e->parent)) continue;
+        n += ui_render_into(fb, e->id, 0);
+    }
+    return n;
+}
+
+bx_ui_element_t *bx_ui_hit(float x, float y) {
+    bx_ui_element_t *best = NULL;
+    for (int i = 0; i < g_bx_ui.count; i++) {
+        bx_ui_element_t *e = &g_bx_ui.els[i];
+        if (!e->id[0] || !e->visible) continue;
+        if (x < e->x || y < e->y || x >= e->x + e->w || y >= e->y + e->h) continue;
+        /* Deeper wins, so a label inside a frame beats the frame. */
+        if (!best) { best = e; continue; }
+        int db = 0, dw = 0;
+        for (const char *p = e->parent; *p && db < 32; db++) {
+            bx_ui_element_t *pe = bx_ui_find(p);
+            if (!pe) break;
+            p = pe->parent;
+        }
+        for (const char *p = best->parent; *p && dw < 32; dw++) {
+            bx_ui_element_t *pe = bx_ui_find(p);
+            if (!pe) break;
+            p = pe->parent;
+        }
+        if (db >= dw || (db == dw && e->z >= best->z)) best = e;
+    }
+    return best;
 }

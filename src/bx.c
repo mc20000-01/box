@@ -957,7 +957,7 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
             }
         }
         const char *fam = family;
-        if(!sub){ printf("ui commands: init | kinds|list | new|ID|KIND [parent] | set|ID|field|val | get|ID|field | attach|FRAME|ID... | detach|FRAME|ID | list | layout|FRAME | dock|PANE | switch|PANE | close|ID | tween|ID|TARGET|PROP|FROM|TO|DUR|FN | tween|ID|to|V | tween|ID|cancel | tween|list | tweenfn|set|NAME|... | tweenfn|list | frame|once | frame|step|SECS | frame|fps|N | ease|FN|T...\n"); free_parts(p,n); free(substr); return pc+1; }
+        if(!sub){ printf("ui commands: init | kinds|list | new|ID|KIND [parent] | set|ID|field|val | get|ID|field | attach|FRAME|ID... | detach|FRAME|ID | list | layout|FRAME | dock|PANE | switch|PANE | render[|BOX | ppm|PATH|BOX] | hit|X|Y|BOX | press|ID|0|1 | select|ID|0|1 | close|ID | tween|ID|TARGET|PROP|FROM|TO|DUR|FN | tween|ID|to|V | tween|ID|cancel | tween|list | tweenfn|set|NAME|... | tweenfn|list | frame|once | frame|step|SECS | frame|fps|N | ease|FN|T...\n"); free_parts(p,n); free(substr); return pc+1; }
         if(streqi(sub,"init")){
             bx_ui_reset(); printf("ui: init ok\n"); fflush(stdout);
         }
@@ -1131,6 +1131,86 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                 printf("ui: switched to %s (z=%d)\n",p[0],e->z); fflush(stdout);
             }
         }
+        else if(streqi(fam,"render")){
+            /* ui render[ppm|PATH] - draw the tree into the framebuffer, and
+             * optionally write it out. The render target is the same one
+             * high.gfx.* draws into, so a program can mix the two. */
+            if (!streqi(box_get(&pr->boxes,"lib_active_gfx"),"1")) {
+                fprintf(stderr,"ui render: gfx library not loaded: use 'lib load|gfx'\n");
+                free_parts(p,n); free(substr); return pc+1;
+            }
+            bx_gfx_fb_t *fb = bx_gfx_fb_get();
+            if (!fb || !fb->pixels) {
+                fprintf(stderr,"ui render: no framebuffer; call high.gfx.fbsize|W|H first\n");
+            } else {
+                int drawn = bx_ui_render(fb);
+                printf("ui render: %d elements drawn to %dx%d\n", drawn, fb->width, fb->height);
+                if (n>=2 && streqi(p[0],"ppm")) {
+                    /* ui render|ppm|PATH[|BOX] - BOX gets 1 on success, so a
+                     * script can tell a failed write from an empty render. */
+                    char *path = resolve(&pr->boxes,p[1]);
+                    int rc = bx_gfx_ppm(path);
+                    if (rc==0) printf("ui render: wrote %s\n", path);
+                    else fprintf(stderr,"ui render: cannot write '%s'\n", path);
+                    char *bn = n>=3 ? resolve(&pr->boxes,p[2]) : NULL;
+                    if (bn) { box_set(&pr->boxes,bn,rc==0?"1":"0"); free(bn); }
+                    free(path);
+                } else if (n>=1 && *p[0]) {
+                    /* ui render|BOX - BOX gets how many elements were drawn. */
+                    char buf[32]; snprintf(buf,sizeof buf,"%d",drawn);
+                    char *bn = resolve(&pr->boxes,p[0]);
+                    box_set(&pr->boxes,bn,buf);
+                    free(bn);
+                }
+                fflush(stdout);
+            }
+        }
+        else if(streqi(fam,"hit") && n>=2){
+            /* ui hit|X|Y|BOX - which element is under the pointer. The answer
+             * is a name, which is the only identifier a program can act on. */
+            bx_ui_element_t *e = bx_ui_hit((float)atof(p[0]),(float)atof(p[1]));
+            char *nm = n>=3 ? resolve(&pr->boxes,p[2]) : NULL;
+            const char *val = e ? e->id : "";
+            if (e) {
+                e->hovered = 1;
+                /* Everything else stops being hovered, so hover follows the
+                 * pointer instead of sticking to whatever it last touched. */
+                for (int i=0;i<g_bx_ui.count;i++) if (g_bx_ui.els[i].id[0] && strcmp(g_bx_ui.els[i].id,e->id)) g_bx_ui.els[i].hovered=0;
+            } else {
+                for (int i=0;i<g_bx_ui.count;i++) g_bx_ui.els[i].hovered=0;
+            }
+            box_set(&pr->boxes, nm ? nm : "ui_hit", val);
+            free(nm);
+            printf("ui hit: %s\n", val); fflush(stdout);
+        }
+        else if(streqi(fam,"press") && n>=2){
+            /* ui press|ID|0|1 - the press state a button draws differently.
+             * Input handling will fill this in; setting it by hand is what
+             * lets a program show and script a pressed button today. */
+            bx_ui_element_t *e = bx_ui_find(p[0]);
+            if(!e) fprintf(stderr,"ui press: no element %s\n",p[0]);
+            /* ui press|ID[|STATE] - absent STATE means pressed, which is what
+             * a click does. The flag is the second argument, not the third:
+             * the bar form has already shifted the subcommand off the front. */
+            else { e->pressed = n>=2 ? atoi(p[1])!=0 : 1; printf("ui press: %s pressed=%d\n", e->id, e->pressed); }
+            fflush(stdout);
+        }
+        else if(streqi(fam,"select") && n>=2){
+            bx_ui_element_t *e = bx_ui_find(p[0]);
+            if(!e) fprintf(stderr,"ui select: no element %s\n",p[0]);
+            else { e->selected = n>=2 ? atoi(p[1])!=0 : 1;
+                   /* Selecting a radio in a group selects that group, which is
+                    * what a radio button means. */
+                   if (e->selected && e->kind==BX_UI_KIND_RADIO && e->parent[0]) {
+                       bx_ui_element_t *par = bx_ui_find(e->parent);
+                       if (par) for (int i=0;i<par->child_count;i++) {
+                           bx_ui_element_t *sib = bx_ui_find(par->children[i]);
+                           if (sib && sib->kind==BX_UI_KIND_RADIO && sib!=e) sib->selected=0;
+                       }
+                   }
+                   printf("ui select: %s selected=%d\n", e->id, e->selected); }
+            fflush(stdout);
+        }
         else if(streqi(fam,"close") && n>=1){
             if(bx_ui_remove(p[0])!=0) fprintf(stderr,"ui close: no element %s\n",p[0]);
             else printf("ui: closed %s\n",p[0]);
@@ -1275,7 +1355,7 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
             }
             printf("\n"); fflush(stdout);
         }
-        else { printf("ui commands: init | kinds|list | new|ID|KIND [parent] | set|ID|field|val | get|ID|field | attach|FRAME|ID... | detach|FRAME|ID | list | layout|FRAME | dock|PANE | switch|PANE | close|ID | tween|ID|TARGET|PROP|FROM|TO|DUR|FN | tween|ID|to|V | tween|ID|cancel | tween|list | tweenfn|set|NAME|... | tweenfn|list | frame|once | frame|step|SECS | frame|fps|N | ease|FN|T...\n"); }
+        else { printf("ui commands: init | kinds|list | new|ID|KIND [parent] | set|ID|field|val | get|ID|field | attach|FRAME|ID... | detach|FRAME|ID | list | layout|FRAME | dock|PANE | switch|PANE | render[|BOX | ppm|PATH|BOX] | hit|X|Y|BOX | press|ID|0|1 | select|ID|0|1 | close|ID | tween|ID|TARGET|PROP|FROM|TO|DUR|FN | tween|ID|to|V | tween|ID|cancel | tween|list | tweenfn|set|NAME|... | tweenfn|list | frame|once | frame|step|SECS | frame|fps|N | ease|FN|T...\n"); }
 ui_done:
         free_parts(p,n); free(substr);
     }
@@ -1293,7 +1373,9 @@ ui_done:
             }
             else if(streqi(sub,"colorhex") && n>=2){
                 Res cv=rfast(&pr->boxes,p[1]);
-                uint32_t v = (uint32_t)strtoul(cv.ptr,NULL,10);
+                /* Base 0, because a color read back from high.gfx.pixel is a
+                 * "0x..." string: parsing that as decimal silently gives 0. */
+                uint32_t v = (uint32_t)strtoul(cv.ptr,NULL,0);
                 if(cv.owned) free((char*)cv.ptr);
                 char buf[16]; snprintf(buf,sizeof buf,"#%02x%02x%02x",(v>>24)&0xFF,(v>>16)&0xFF,(v>>8)&0xFF);                char *name=resolve(&pr->boxes,p[0]); box_set(&pr->boxes,name,buf); free(name);
             }

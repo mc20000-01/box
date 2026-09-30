@@ -4,6 +4,11 @@
 // these results come out the same on a fast machine and a slow one. That is
 // the reason `ui frame step` sits next to the real clock.
 
+// Rendering needs a framebuffer, so the gfx library comes along for the tests.
+// This has to run before the first jump, which is the program entry point.
+lib load|gfx
+high.gfx.fbsize|200|120
+
 box ui_fail|0
 jump ui_first|m
 
@@ -202,6 +207,96 @@ ui.get|root|children|nc
 box ui_name|closing a pane detaches it from its frame
 box ui_got|$nc
 box ui_want|2
+box ui_next|ui_render
+jump uicheck|m
+
+// --- rendering -----------------------------------------------------------
+premark ui_render
+ui.init
+ui.new|win|frame
+ui.set|win|x|0
+ui.set|win|y|0
+ui.set|win|w|200
+ui.set|win|h|120
+ui.new|btn|button|win
+ui.set|btn|x|20
+ui.set|btn|y|40
+ui.set|btn|w|80
+ui.set|btn|h|24
+ui.set|btn|text|Go
+ui.render|ui_count
+box ui_name|ui render reports how many elements it drew
+box ui_got|$ui_count
+box ui_want|2
+box ui_next|ui_render_panel
+jump uicheck|m
+
+premark ui_render_panel
+ui.render
+high.gfx.pixel|ui_px|150|100
+high.gfx.colorhex|ui_hex|$ui_px
+box ui_name|the frame fills its own rect
+box ui_got|$ui_hex
+box ui_want|#131a22
+box ui_next|ui_render_text
+jump uicheck|m
+
+premark ui_render_text
+high.gfx.pixel|ui_px|30|50
+high.gfx.colorhex|ui_hex|$ui_px
+box ui_name|a button paints its own fill
+box ui_got|$ui_hex
+box ui_want|#2a8d81
+box ui_next|ui_render_press
+jump uicheck|m
+
+// Hover and press each change the fill, which is the whole point of a
+// stateful button. The hexes are the site palette's #2a8d81 lerped toward
+// #0b0f14 (pressed) and toward #4fd6c4 (hovered).
+premark ui_render_press
+ui.press|btn|1
+ui.render
+high.gfx.pixel|ui_px|30|50
+high.gfx.colorhex|ui_hex2|$ui_px
+box ui_name|a pressed button draws darker
+box ui_got|$ui_hex2
+box ui_want|#1e5d58
+box ui_next|ui_render_hover
+jump uicheck|m
+
+premark ui_render_hover
+ui.press|btn|0
+ui.hit|30|50|ui_hovered
+ui.render
+high.gfx.pixel|ui_px|30|50
+high.gfx.colorhex|ui_hex3|$ui_px
+box ui_name|hovering a button lightens it
+box ui_got|$ui_hex3
+box ui_want|#329e90
+box ui_next|ui_render_hit
+jump uicheck|m
+
+premark ui_render_hit
+ui.hit|30|50|ui_under
+box ui_name|a hit test finds the button, not the frame under it
+box ui_got|$ui_under
+box ui_want|btn
+box ui_next|ui_render_hit_out
+jump uicheck|m
+
+premark ui_render_hit_out
+ui.hit|190|110|ui_under
+box ui_name|a hit outside every child finds the frame
+box ui_got|$ui_under
+box ui_want|win
+box ui_next|ui_render_ppm
+jump uicheck|m
+
+premark ui_render_ppm
+ui.render|ppm|.build/ui-render.ppm|ui_ppm_ok
+box ui_name|ui render writes a PPM
+box ui_got|$ui_ppm_ok
+box ui_want|1
 box ui_next|ui_last
 jump uicheck|m
 

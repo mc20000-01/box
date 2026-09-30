@@ -45,7 +45,7 @@ There is also a `low.*` family, which reports the environment the runtime found:
 
 ```bx
 lib load|gfx
-high.gfx.init|800|600
+high.gfx.fbsize|800|600
 high.gfx.theme|dark
 high.gfx.rect|10|10|400|300|fill|#4fd6c4
 high.gfx.render
