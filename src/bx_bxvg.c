@@ -51,6 +51,17 @@ int32_t bx_vg_shape_add(bx_vg_doc_t *d, const char *name) {
     return d->nshape - 1;
 }
 
+/* Remove the shape at `i`, closing the gap. Only the tail is shuffled: a
+ * shape that fails to be added should not leave a hole behind it. Ids are
+ * positional, so the last shape's id changes when anything is removed. */
+int32_t bx_vg_shape_del(bx_vg_doc_t *d, int32_t i) {
+    if (!d || i < 0 || i >= d->nshape) return -1;
+    for (int32_t k = i; k + 1 < d->nshape; k++) d->shape[k] = d->shape[k + 1];
+    d->nshape--;
+    memset(&d->shape[d->nshape], 0, sizeof d->shape[0]);
+    return i;
+}
+
 bx_vg_shape_t *bx_vg_shape_find(bx_vg_doc_t *d, const char *name) {
     if (!d || !name) return NULL;
     for (int32_t i = 0; i < d->nshape; i++)
@@ -83,6 +94,18 @@ int32_t bx_vg_frame_find(const bx_vg_doc_t *d, const char *name) {
     for (int32_t i = 0; i < d->nframe; i++)
         if (!strcmp(d->frame[i].name, name)) return i;
     return -1;
+}
+
+/* Drop the frame at `i`, closing the gap. Used when a frame add is asked for
+ * a shape range the document does not have, so a bad request does not leave a
+ * half-built frame behind. */
+int32_t bx_vg_frame_del(bx_vg_doc_t *d, int32_t i) {
+    if (!d || i < 0 || i >= d->nframe) return -1;
+    for (int32_t k = i; k + 1 < d->nframe; k++) d->frame[k] = d->frame[k + 1];
+    d->nframe--;
+    memset(&d->frame[d->nframe], 0, sizeof d->frame[0]);
+    if (d->cur_frame >= d->nframe) d->cur_frame = d->nframe > 0 ? d->nframe - 1 : 0;
+    return i;
 }
 
 int bx_vg_frame_set(bx_vg_doc_t *d, int32_t frame) {

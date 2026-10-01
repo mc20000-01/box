@@ -130,10 +130,12 @@ long bx_vg_from_svg_readfile(const char *path, char *err, size_t errcap);
 int32_t bx_vg_shape_add(bx_vg_doc_t *d, const char *name);
 bx_vg_shape_t *bx_vg_shape_find(bx_vg_doc_t *d, const char *name);
 int32_t bx_vg_shape_at(const bx_vg_doc_t *d, int32_t i);
+int32_t bx_vg_shape_del(bx_vg_doc_t *d, int32_t i);
 
 /* Frames. */
 int32_t bx_vg_frame_add(bx_vg_doc_t *d, const char *name);
 int32_t bx_vg_frame_find(const bx_vg_doc_t *d, const char *name);
+int32_t bx_vg_frame_del(bx_vg_doc_t *d, int32_t i);
 int     bx_vg_frame_set(bx_vg_doc_t *d, int32_t frame);
 /* Move toward a frame over dt seconds, and land on it when close. Returns 1
  * while it is still moving. */

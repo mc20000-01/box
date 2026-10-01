@@ -1417,7 +1417,14 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                          * one field, so a path is one argument. */
                         if (n > 3) bx_vg_parse_path_d(sh, p[3]);
                     } else {
-                        fprintf(stderr, "ui vg add: unknown type '%s'\n", ty);
+                        /* An unknown type must not also report success. It used
+                         * to fall through to the printf below, so the shape was
+                         * named with a type it does not have and the shape list
+                         * printed it back wrong. */
+                        bx_vg_shape_del(d, si);
+                        fprintf(stderr, "ui vg add: unknown type '%s' (rect circle ellipse line poly path)\n", ty);
+                        free_parts(p, n);
+                        return pc + 1;
                     }
                     printf("ui vg: added %s as shape %d (%s)\n", p[1], sh->id, ty);
                 }
@@ -1461,7 +1468,13 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                         else if (streqi(p[3],"poly")) sh->type=BX_VG_POLY;
                         else if (streqi(p[3],"path")) sh->type=BX_VG_PATH;
                     }
-                    else fprintf(stderr, "ui vg set: unknown field '%s'\n", f);
+                    else {
+                        /* Same rule as ui vg add: a rejected field must not
+                         * then print a line saying it was set. */
+                        fprintf(stderr, "ui vg set: unknown field '%s' (fill stroke sw opacity closed name type)\n", f);
+                        free_parts(p, n);
+                        return pc + 1;
+                    }
                     printf("ui vg: %s.%s = %s\n", p[1], f, p[3]);
                 }
             }
@@ -1504,12 +1517,39 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                 bx_vg_doc_t *d = bx_vg_get();
                 if (streqi(p[1], "add") && n>=3) {
                     int32_t fi = bx_vg_frame_add(d, p[2]);
+                    if (fi < 0) {
+                        fprintf(stderr, "ui vg frame add: too many frames (max %d)\n", BX_VG_MAX_FRAMES);
+                        free_parts(p, n);
+                        return pc + 1;
+                    }
                     if (n > 3) d->frame[fi].first = atoi(p[3]);
                     if (n > 4) d->frame[fi].count = atoi(p[4]);
                     else d->frame[fi].count = d->nshape - d->frame[fi].first;
+                    /* A frame that names shapes the document does not have
+                     * would silently show nothing, so it is refused and rolled
+                     * back rather than kept. */
+                    if (d->frame[fi].first < 0 || d->frame[fi].count < 0 ||
+                        d->frame[fi].first + d->frame[fi].count > d->nshape) {
+                        fprintf(stderr, "ui vg frame add: wants shapes %d..%d, document has %d\n",
+                                d->frame[fi].first, d->frame[fi].first + d->frame[fi].count - 1, d->nshape);
+                        bx_vg_frame_del(d, fi);
+                        free_parts(p, n);
+                        return pc + 1;
+                    }
                     if (d->nframe == 1) bx_vg_frame_set(d, 0);
                     printf("ui vg: frame %d '%s' shows %d shape(s)\n", fi, p[2],
                            d->frame[fi].count);
+                } else if (streqi(p[1], "list")) {
+                    for (int32_t i = 0; i < d->nframe; i++)
+                        printf("  frame %d %-12s %d..%d%s\n", i, d->frame[i].name,
+                               d->frame[i].first,
+                               d->frame[i].first + d->frame[i].count - 1,
+                               i == d->cur_frame ? "  (showing)" : "");
+                } else if (streqi(p[1], "anim") && n>=2) {
+                    /* frame|anim|FPS is handled by the frame step; here it is
+                     * just turned on so the next frame advances. */
+                    bx_vg_anim_fps(d, (float)atof(p[1]));
+                    printf("ui vg: animating at %g fps\n", (float)atof(p[1]));
                 } else if (streqi(p[1], "list")) {
                     for (int32_t i = 0; i < d->nframe; i++)
                         printf("  frame %d %-12s %d..%d%s\n", i, d->frame[i].name,
@@ -1525,7 +1565,10 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                     int32_t fi = bx_vg_frame_find(d, p[1]);
                     if (fi < 0 && !strcmp(p[1], "next"))
                         fi = (d->cur_frame + 1) % (d->nframe ? d->nframe : 1);
-                    if (fi < 0) fprintf(stderr, "ui vg frame: no frame '%s'\n", p[1]);
+                    /* Selecting a frame that does not exist said only "no
+                     * frame", which reads like a bug. The name of the command
+                     * that creates one is more use than the complaint. */
+                    if (fi < 0) fprintf(stderr, "ui vg frame: no frame '%s' - use 'ui vg frame add|%s|FROM|COUNT'\n", p[1], p[1]);
                     else { bx_vg_frame_set(d, fi); printf("ui vg: frame %d '%s'\n", fi, p[1]); }
                 }
             }
