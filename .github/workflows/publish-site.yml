@@ -1,0 +1,55 @@
+name: publish site
+
+# The site is generated from docs/ and the package registry, so it is built
+# here rather than committed. Every push to main rebuilds it and force-pushes
+# the result onto the web branch, which is what GitHub Pages serves.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # gen-site.py uses nothing outside the standard library, so there is
+      # nothing to install before building.
+      - name: build site
+        run: python3 scripts/gen-site.py
+
+      - name: check the examples still run
+        run: make -s bx && python3 tools/check-docs.py
+
+      # Pages serves the branch root, so the built site has to be the root of
+      # the branch rather than a subdirectory of it. .nojekyll stops GitHub
+      # from discarding the paths that start with an underscore.
+      - name: publish
+        run: |
+          set -euo pipefail
+          cd site
+          touch .nojekyll
+          git init -q -b web .
+          git config user.name  github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -q -m "site: rebuild from ${GITHUB_SHA::8}"
+          git push -f https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git web:web
+
+      - name: request a Pages build
+        run: gh api --method POST repos/${GITHUB_REPOSITORY}/pages/builds
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
