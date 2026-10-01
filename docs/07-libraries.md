@@ -47,12 +47,12 @@ There is also a `low.*` family, which reports the environment the runtime found:
 lib load|gfx
 high.gfx.fbsize|800|600
 high.gfx.theme|dark
-high.gfx.rect|10|10|400|300|fill|#4fd6c4
+high.gfx.rect|10|10|400|300|#4fd6c4
 high.gfx.render
-
+end
 ```
 
-Colors are written the way a designer writes them: `#rgb`, `#rgba`, `#rrggbb`, and `#rrggbbaa`. The framebuffer knows the difference between `fill` and `line` because the last argument before the color is the mode.
+Colors are written the way a designer writes them: `#rgb`, `#rgba`, `#rrggbb`, and `#rrggbbaa`. The shape command takes the color as its **last** argument, with no mode word in front of it — `rect|10|10|400|300|#4fd6c4`, not `rect|...|fill|#4fd6c4`. Passing `fill` makes the command report a bad color, because that is what it is being read as.
 
 Shapes cover the usual ground: `rect`, `circle`, `ring`, `line`, `tri`, `poly`, `triline`, `plot`, and `pixel`. Gradients come in two directions, `gradh` and `gradv`, and `alpha` sets transparency for whatever is drawn next. `fbinfo`, `fbsize`, and `fbclear` report and reset the surface.
 

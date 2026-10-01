@@ -1884,10 +1884,15 @@ ui_done:
         fprintf(stderr,"ui: the UI layer is not available in an embedded build\n");
     }
 #endif
-    else if (!strncmp(cmd,"high.gfx.",9)) {
-        if(streqi(box_get(&pr->boxes,"lib_active_gfx"),"1")){
-            const char *sub=cmd+9; int n; char **p=split_bars(args,&n);
-            if(streqi(sub,"color") && n>=2){
+    else if (!strncmp(cmd,"high.gfx",8)) {
+        /* The bare prefix, with or without its dot, prints the command list.
+         * A family that can only be discovered by reading the source is a
+         * family nobody uses the second half of. */
+        if(!streqi(box_get(&pr->boxes,"lib_active_gfx"),"1")){ fprintf(stderr,"gfx library not loaded: use 'lib load|gfx'\n"); fflush(stderr); }
+        else {
+            const char *sub = cmd[8]=='.' ? cmd+9 : ""; int n; char **p=split_bars(args,&n);
+            if(n==0 && !*sub){ printf("high.gfx: use high.gfx.<command> - try high.gfx. for the list\n"); fflush(stdout); }
+            else if(streqi(sub,"color") && n>=2){
                 uint32_t c=bx_gfx_parse_color(p[1]); char buf[32]; snprintf(buf,sizeof buf,"%u",c);
                 char *name=resolve(&pr->boxes,p[0]); box_set(&pr->boxes,name,buf); free(name);
             }
@@ -2209,18 +2214,58 @@ ui_done:
                 else gfx_out(pr,p[0],"");
             }
             else { printf("high.gfx commands:\n");
-                printf("  color|box|#rgb        parse a color to a number\n");
+                printf("  -- surface --\n");
+                printf("  fbsize|w|h             set the framebuffer size\n");
+                printf("  fbinfo [box]           width, height, format\n");
+                printf("  fbclear|#rgb           fill the surface with one color\n");
+                printf("  ppm|path|x|y|w|h       write a crop as an image\n");
+                printf("  render                 draw the element tree\n");
+                printf("  draw|box|id            draw one element, into a named box\n");
+                printf("  -- colors --\n");
+                printf("  color|box|#rgb         parse a color to a number\n");
                 printf("  colorhex|box|number    format a number back to #rrggbb\n");
-                printf("  theme|box|[c..h..r..t..x..b..]\n");
+                printf("  named|box|name         look up a CSS color name\n");
+                printf("  colors|box             every color name it knows\n");
+                printf("  rgb|box|x|y            read a pixel back as \"r g b a\"\n");
+                printf("  -- drawing --\n");
+                printf("  rect|x|y|w|h|#rgb      filled rectangle\n");
+                printf("  frame|x|y|w|h|#rgb     outlined rectangle\n");
+                printf("  line|x1|y1|x2|y2|#rgb  a line\n");
+                printf("  circle|cx|cy|r|#rgb    filled circle\n");
+                printf("  ring|cx|cy|r|#rgb      circle outline\n");
+                printf("  tri|x1|y1|x2|y2|x3|y3|#rgb\n");
+                printf("  triline|...            the same, outlined\n");
+                printf("  poly|points|#rgb       filled polygon\n");
+                printf("  plot|x|y|#rgb          plot from the last point\n");
+                printf("  pixel|x|y|#rgb         set one pixel\n");
+                printf("  ascii|box|x|y|w|h|ramp render a crop as ascii art\n");
+                printf("  gradh|x|y|w|h|#a|#b    horizontal gradient\n");
+                printf("  gradv|x|y|w|h|#a|#b    vertical gradient\n");
+                printf("  alpha|0-100            transparency for the next draw\n");
+                printf("  clip|x|y|w|h|on|off    clipping rectangle\n");
+                printf("  translate|dx|dy|on|off  move the origin\n");
+                printf("  scale|f|ox|oy          zoom about a point\n");
+                printf("  rotate|deg|ox|oy       spin about a point\n");
+                printf("  lerp|t                 set the interpolation state\n");
+                printf("  identity               reset clip, translate, scale\n");
+                printf("  -- themes --\n");
+                printf("  theme|box|[c..h..r..t..x..b..]   bracketed, all six in order\n");
+                printf("  style|box|name|...      apply a named style\n");
+                printf("  styles                 the style names it knows\n");
+                printf("  clipreset              parse preset flags from argv\n");
+                printf("  -- elements --\n");
                 printf("  new|id|parent|type|x|y [w|h|theme|box|text]\n");
-                printf("  set|id|field|value     field: x y w h text theme box\n");
+                printf("  set|id|field|value     field: x y w h text theme box fill stroke\n");
                 printf("  get|id [field]         read back an element\n");
+                printf("  shape|id|kind|...|color set a shape on an element\n");
                 printf("  count [box]            number of elements\n");
                 printf("  list                   print every element\n");
+                printf("  push|box|value         push onto a stack\n");
+                printf("  pop|box                pop into a box\n");
                 printf("  clear                  drop every element\n");
                 printf("  types                  element type names\n"); }
             free_parts(p,n);
-        } else { fprintf(stderr,"gfx library not loaded: use 'lib load|gfx'\n"); fflush(stderr); }
+        }
     }
     else if (!strncmp(cmd,"high.snd.",9)) {
         if(streqi(box_get(&pr->boxes,"lib_active_snd"),"1")){
