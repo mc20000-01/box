@@ -2253,11 +2253,13 @@ ui_done:
                 printf("  style|box|name|...      apply a named style\n");
                 printf("  styles                 the style names it knows\n");
                 printf("  clipreset              parse preset flags from argv\n");
+                printf("  shape|box|parent|kind|x0|y0|x1|y1|x2|y2|color  a drawable\n");
                 printf("  -- elements --\n");
                 printf("  new|id|parent|type|x|y [w|h|theme|box|text]\n");
-                printf("  set|id|field|value     field: x y w h text theme box fill stroke\n");
+                printf("     type: button text slider box textbox label image panel\n");
+                printf("     id and parent are numbers; id 0 auto-assigns\n");
+                printf("  set|id|field|value     field: x y w h text theme box\n");
                 printf("  get|id [field]         read back an element\n");
-                printf("  shape|id|kind|...|color set a shape on an element\n");
                 printf("  count [box]            number of elements\n");
                 printf("  list                   print every element\n");
                 printf("  push|box|value         push onto a stack\n");
