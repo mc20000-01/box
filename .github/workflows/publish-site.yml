@@ -11,6 +11,8 @@ on:
 
 permissions:
   contents: write
+  # Asking for the build is a separate permission from pushing it.
+  pages: write
 
 concurrency:
   group: pages
