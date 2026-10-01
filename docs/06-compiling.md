@@ -49,7 +49,7 @@ Three C libraries live in `src/`. The wifi and gfx ones are now reachable from B
 
 A ruleset is a small file that replaces those defaults. It says which compiler to call, what flags to pass, how to link, and what the result should be called.
 
-```bx
+```text
 ruleset.md
 name: freestanding-i386
 version: 1.0.0
