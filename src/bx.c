@@ -1451,6 +1451,16 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                     else if (!strcmp(f,"h")) sh->h=(float)atof(p[3]);
                     else if (!strcmp(f,"cx")) sh->x=(float)atof(p[3])-sh->w/2;
                     else if (!strcmp(f,"cy")) sh->y=(float)atof(p[3])-sh->h/2;
+                    else if (!strcmp(f,"r")) {
+                        /* `vg add|circle|cx|cy|R` takes a radius, so `set|r`
+                         * has to mean the same thing rather than a diameter.
+                         * w and h hold the diameter internally, and the centre
+                         * is kept put: a ring that breathes should not creep
+                         * across the page while it does it. */
+                        float rr=(float)atof(p[3]);
+                        float mx=sh->x+sh->w/2, my=sh->y+sh->h/2;
+                        sh->w=rr*2; sh->h=rr*2; sh->x=mx-rr; sh->y=my-rr;
+                    }
                     else if (!strcmp(f,"x1")) sh->x1=(float)atof(p[3]);
                     else if (!strcmp(f,"y1")) sh->y1=(float)atof(p[3]);
                     /* "none" is the word for "no paint here", and it has to be
@@ -1481,7 +1491,7 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
                     else {
                         /* Same rule as ui vg add: a rejected field must not
                          * then print a line saying it was set. */
-                        fprintf(stderr, "ui vg set: unknown field '%s' (fill stroke sw opacity closed name type)\n", f);
+                        fprintf(stderr, "ui vg set: unknown field '%s' (x y w h cx cy r x1 y1 fill stroke sw opacity closed name type)\n", f);
                         free_parts(p, n);
                         return pc + 1;
                     }

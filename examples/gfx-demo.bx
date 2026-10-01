@@ -1,0 +1,159 @@
+// A headless tour of the graphics side of BoxedLANG.
+//
+//   make demo
+//   ./bx run examples/gfx-demo.bx
+//
+// Everything here runs without a window. Each frame is rendered into a 200x100
+// framebuffer and printed to the terminal as ASCII, which is the whole demo
+// when there is no display to show it in. The same frames are written to
+// .build/demo/ as PPM images, which is what to look at when you want the real
+// pixels instead of the ramp.
+//
+// What it exercises, in the order it happens:
+//   - a themed widget tree built with ui new / ui set
+//   - hover and pressed states, driven through ui pointer and ui press rather
+//     than by setting the fields, so the same path a platform would use runs
+//   - a tween easing one element into place
+//   - a wave driver: a sine curve mapped onto another element's width, so a
+//     property is computed rather than measured
+//   - a ui.vg vector scene layered on top of the widgets
+//   - a fixed timestep, so every run of this file produces the same frames
+
+lib load|gfx
+
+// Small enough that a whole frame fits a terminal crop below.
+high.gfx.fbsize|200|100
+ui.init
+
+// ------------------------------------------------------------ widget tree
+
+ui.new|root|frame
+ui.set|root|x|0
+ui.set|root|y|0
+ui.set|root|w|200
+ui.set|root|h|100
+ui.set|root|theme|[c#2a9d8f.h#e9f5f0.r4.t%90.x#8ea3b8.b#1b2635]
+
+ui.new|title|label|root
+ui.set|title|x|8
+ui.set|title|y|5
+ui.set|title|text|BOXEDLANG
+
+ui.new|sub|label|root
+ui.set|sub|x|8
+ui.set|sub|y|16
+ui.set|sub|text|gfx and ui demo
+
+ui.new|ok|button|root
+ui.set|ok|x|8
+ui.set|ok|y|30
+ui.set|ok|w|54
+ui.set|ok|h|18
+ui.set|ok|text|OK
+
+ui.new|cancel|button|root
+ui.set|cancel|x|70
+ui.set|cancel|y|30
+ui.set|cancel|w|54
+ui.set|cancel|h|18
+ui.set|cancel|text|CANCEL
+
+// The width of this one is a function of the clock, not a number anyone set.
+ui.new|pulse|pane|root
+ui.set|pulse|x|8
+ui.set|pulse|y|54
+ui.set|pulse|h|12
+ui.set|pulse|w|10
+ui.mathfn.set|breathe|sin|1|1|0|0
+ui.drive|pulse|w|wave|breathe|6|46
+
+ui.new|status|label|root
+ui.set|status|x|8
+ui.set|status|y|70
+ui.set|status|text|ready
+
+// The tween slides this one across the bottom of the window. The first field
+// names the tween, the second is the element it moves: ui tween|ID|TARGET|PROP|FROM|TO|DUR[|FN].
+ui.new|slide|pane|root
+ui.set|slide|x|8
+ui.set|slide|y|90
+ui.set|slide|w|24
+ui.set|slide|h|8
+ui.tween|slidein|slide|x|0|168|2.1|ease-in-out
+
+// ---------------------------------------------------------- vector scene
+// Draw order matters: ui render clears the framebuffer, so the vector scene
+// goes on afterwards or it would be erased.
+ui|vg|reset
+ui|vg|size|200|100
+ui|vg|add|halo|circle|168|26|18
+ui|vg|set|halo|fill|none
+ui|vg|set|halo|stroke|#e76f51
+ui|vg|set|halo|sw|2
+ui|vg|add|dot|circle|168|26|5
+ui|vg|set|dot|fill|#e76f51
+ui|vg|add|tick|poly|146,34 152,44 158,34
+ui|vg|set|tick|fill|#f4a261
+
+// ------------------------------------------------------------------ input
+// Point at OK and hold it down, so the pressed paint is in the frames.
+ui.pointer|35|39|move
+ui.focus|ok
+ui.press|ok|1
+
+box frame|0
+jump loop|m
+
+// ------------------------------------------------------------- the loop
+// Fixed step, always. `ui frame once` reads the wall clock and would make
+// every run of this file differ.
+
+premark loop
+math frame|$frame|1|+
+ui.frame|step|0.08
+ui.render
+ui|vg|set|halo|r|14
+
+// Breathe the ring: 14..22 on a ten-step cycle, from the frame counter.
+math cyc|$frame|%10
+math rad|14|$cyc|+
+ui|vg|set|halo|r|$rad
+ui|vg|draw|0|0|200|100
+
+// Once the tween lands, the status line says so.
+ui.get|slide|x|sx
+if $sx|>|165|ui set|status|text|landed|m
+
+// Every fifth frame, show it.
+math tick|$frame|%5
+test show|$tick|==|0|1|0
+if $show|==|1|preview|m
+
+jumpif $frame|<|26|loop|m
+say
+say demo done, $frame frames, images in .build/demo/
+end
+
+// --------------------------------------------------------------- preview
+
+premark preview
+high.gfx.ascii|art|0|0|96|30| .:-=+*#%@
+say frame $frame
+say $art
+
+// Keep a few frames as images. Six is enough to see the tween move without
+// filling the directory.
+math sixth|$frame|%5
+test keep|$sixth|==|0|1|0
+if $keep|==|1|save|m
+jump next|m
+
+premark save
+str path|.build/demo/f-$frame.ppm|..
+str path|$path|/..
+str path|$path|f-$frame.ppm
+ui.render|ppm|$path|ok
+jump next|m
+
+premark next
+jump loop|m
