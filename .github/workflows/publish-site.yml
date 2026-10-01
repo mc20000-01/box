@@ -47,7 +47,11 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
           git commit -q -m "site: rebuild from ${GITHUB_SHA::8}"
-          git push -f https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git web:web
+          git push -f https://x-access-token:"${GH_TOKEN}"@github.com/${GITHUB_REPOSITORY}.git web:web
+        env:
+          # Not GITHUB_TOKEN: set -u would treat that as unset, because
+          # GitHub only injects it into env: blocks you name explicitly.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: request a Pages build
         run: gh api --method POST repos/${GITHUB_REPOSITORY}/pages/builds
