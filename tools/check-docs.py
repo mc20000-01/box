@@ -22,13 +22,17 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BX = os.path.join(ROOT, "bx")
+BUILD = os.path.join(ROOT, ".build")
 
 FENCE = re.compile(r"^```(?:box|bx)(?P<flags>[^\n]*)\n(?P<body>.*?)^```", re.S | re.M)
 
 
 def run(body):
+    # A fresh checkout has no .build, and the checker only ever worked
+    # because a build had already made it.
+    os.makedirs(BUILD, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", suffix=".bx", delete=False,
-                                     dir=os.path.join(ROOT, ".build")) as f:
+                                     dir=BUILD) as f:
         # Some snippets need a framebuffer and some need a math library.
         f.write("lib load|gfx\nlib load|math\n")
         f.write(body)
