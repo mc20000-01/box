@@ -139,7 +139,7 @@ typedef struct { char *name; char *value; int inl; char ibuf[16]; long ival; int
 typedef struct { Box *items; size_t len, cap; } Boxes;
 typedef struct { char *name; int line; } Mark;
 typedef struct { Mark *items; size_t len, cap; } Marks;
-typedef enum { OP_BOX, OP_SAY, OP_MATH, OP_TEST, OP_IF, OP_JUMP, OP_JUMPIF, OP_DEL, OP_END, OP_PREMARK } OpKind;
+typedef enum { OP_BOX, OP_SAY, OP_MATH, OP_TEST, OP_IF, OP_JUMP, OP_JUMPIF, OP_DEL, OP_END, OP_PREMARK, OP_MARK } OpKind;
 typedef struct { OpKind kind; int n; char **parts; } Op;
 typedef struct {
     char **lines;
@@ -268,6 +268,15 @@ static void mark_add(Marks *m, const char *name, int line) {
     if (m->len == m->cap) { m->cap = m->cap ? m->cap * 2 : 16; m->items = xrealloc(m->items, sizeof(Mark) * m->cap); }
     m->items[m->len].name = xstrdup(name); m->items[m->len].line = line; m->len++;
 }
+/* A runtime `mark` re-points a name instead of complaining. Two marks with
+ * the same name in a straight-line program is the mistake premark warns
+ * about, but a mark inside a loop is the normal way to say "come back to
+ * here", and it runs once per pass, so a warning there would be noise. */
+static void mark_set(Marks *m, const char *name, int line) {
+    for (size_t i = 0; i < m->len; i++)
+        if (!strcmp(m->items[i].name, name)) { m->items[i].line = line; return; }
+    mark_add(m, name, line);
+}
 static int mark_find(Marks *m, const char *name) { for (size_t i = 0; i < m->len; i++) if (!strcmp(m->items[i].name, name)) return m->items[i].line; return -1; }
 static void marks_free(Marks *m) { for (size_t i = 0; i < m->len; i++) free(m->items[i].name); free(m->items); }
 
@@ -370,7 +379,7 @@ static const char *canonical(const char *cmd) {
     if (streqi(cmd,"j")) return "jump";
     if (streqi(cmd,"ji")) return "jumpif";
     if (streqi(cmd,"d")) return "del";
-    if (streqi(cmd,"mark") || streqi(cmd,"mk")) return "premark";
+    if (streqi(cmd,"mk")) return "mark";
     if (streqi(cmd,"e")) return "end";
     if (streqi(cmd,"cls")) return "clear";
     return cmd;
@@ -385,7 +394,7 @@ static const char *canonical(const char *cmd) {
 static int cmd_known(const char *cmd) {
     static const char *const words[] = {
         "box","say","ask","math","test","if","jump","jumpif","del","end",
-        "premark","clear","file","str","bxe","lib","umload","ui","high", NULL
+        "premark","mark","clear","file","str","bxe","lib","umload","ui","high", NULL
     };
     for (int i = 0; words[i]; i++) if (streqi(cmd, words[i])) return 1;
     /* The families that take a dot: high.gfx, high.snd, high.math, high.m3d,
@@ -574,12 +583,13 @@ static int exec_command(Program *pr, const char *cmdline, int pc) {
     if (streqi(cmd,"box")) { int n; char **p = split_bars(args, &n); if (n >= 2) { Res rn=rfast(&pr->boxes,p[0]); Res rv=rfast(&pr->boxes,p[1]); box_set(&pr->boxes,rn.ptr,rv.ptr); if(rn.owned) free((char*)rn.ptr); if(rv.owned) free((char*)rv.ptr); } free_parts(p,n); }
     else if (streqi(cmd,"say")) { int n; char **p = split_bars(args,&n); Res rt={0,0}; char *text; if(n){ rt=rfast(&pr->boxes,p[0]); text=(char*)rt.ptr; } else { text=(char*)"\n"; puts(text); free_parts(p,n); return pc+1; } puts(text); if(stdout_is_tty()) fflush(stdout); if (n >= 2) { long sec = bx_int(&pr->boxes,p[1]); if (sec > 0) { struct timespec ts = { sec, 0 }; nanosleep(&ts, NULL); } } if(rt.owned) free((char*)rt.ptr); free_parts(p,n); }
     else if (streqi(cmd,"ask")) { char *r = resolve(&pr->boxes,args); char *last = strrchr(r, ' '); char *target = r; if (last) { *last = 0; printf("%s ", r); target = last + 1; } fflush(stdout); char buf[4096]; if (!fgets(buf,sizeof buf,stdin)) buf[0]=0; buf[strcspn(buf,"\r\n")]=0; box_set(&pr->boxes,target,buf); free(r); }
-    else if (streqi(cmd,"math")) { int n; char **p=split_bars(args,&n); if(n>=4){ long a=bx_int(&pr->boxes,p[1]), b=bx_int(&pr->boxes,p[2]), v=0; Res ro=rfast(&pr->boxes,p[3]); const char *op=ro.ptr; if(!strcmp(op,"+"))v=a+b; else if(!strcmp(op,"-"))v=a-b; else if(!strcmp(op,"*")||streqi(op,"x"))v=a*b; else if(!strcmp(op,"/"))v=b? a/b:0; else if(!strcmp(op,"%"))v=b? a%b:0; if(ro.owned) free((char*)ro.ptr); char buf[64]; snprintf(buf,sizeof buf,"%ld",v); Res rn=rfast(&pr->boxes,p[0]); box_set(&pr->boxes,rn.ptr,buf); if(rn.owned) free((char*)rn.ptr);} free_parts(p,n); }
+    else if (streqi(cmd,"math")) { int n; char **p=split_bars(args,&n); if(n>=4){ long a=bx_int(&pr->boxes,p[1]), b=bx_int(&pr->boxes,p[2]), v=0; Res ro=rfast(&pr->boxes,p[3]); const char *op=ro.ptr; int known=1; if(!strcmp(op,"+"))v=a+b; else if(!strcmp(op,"-"))v=a-b; else if(!strcmp(op,"*")||streqi(op,"x"))v=a*b; else if(!strcmp(op,"/"))v=b? a/b:0; else if(!strcmp(op,"%"))v=b? a%b:0; else known=0; if(!known) fprintf(stderr,"math: unknown operator %s\n",op); if(ro.owned) free((char*)ro.ptr); char buf[64]; snprintf(buf,sizeof buf,"%ld",v); Res rn=rfast(&pr->boxes,p[0]); box_set(&pr->boxes,rn.ptr,buf); if(rn.owned) free((char*)rn.ptr);} free_parts(p,n); }
     else if (streqi(cmd,"test")) { int n; char **p=split_bars(args,&n); if(n>=4){ char *cond[3] = { p[1], p[2], p[3] }; int ok=eval_cond(&pr->boxes,cond,3); Res rv=rfast(&pr->boxes, ok ? (n>=5?p[4]:"1") : (n>=6?p[5]:"0")); Res rn=rfast(&pr->boxes,p[0]); box_set(&pr->boxes,rn.ptr,rv.ptr); if(rn.owned) free((char*)rn.ptr); if(rv.owned) free((char*)rv.ptr);} free_parts(p,n); }
     else if (streqi(cmd,"if")) { int n; char **p=split_bars(args,&n); if(n>=4 && eval_cond(&pr->boxes,p,3)){ size_t total=0; for(int i=3;i<n;i++) total += strlen(p[i])+2; char *nested=calloc(1,total+1); for(int i=3;i<n;i++){ if(i>3) strcat(nested, i==4 ? " " : "|"); strcat(nested,p[i]); } int npc=exec_line(pr,nested,pc); free(nested); free_parts(p,n); free(line); return npc==pc+1?pc+1:npc; } free_parts(p,n); }
     else if (streqi(cmd,"jump")) { int n; char **p=split_bars(args,&n); if(n>=1){ Res rt=rfast(&pr->boxes,p[0]); const char *target=rt.ptr; if(n>=2 && streqi(p[1],"m")){ int m=mark_find(&pr->marks,target); if(m>=0){ if(rt.owned) free((char*)rt.ptr); free_parts(p,n); free(line); return m; }} else if(is_number(target)) { int t=atoi(target)-1; if(t>=0 && t<pr->count){ if(rt.owned) free((char*)rt.ptr); free_parts(p,n); free(line); return t; }} if(rt.owned) free((char*)rt.ptr); } free_parts(p,n); }
     else if (streqi(cmd,"jumpif")) { int n; char **p=split_bars(args,&n); if(n>=4 && eval_cond(&pr->boxes,p,3)){ Res rt=rfast(&pr->boxes,p[3]); const char *target=rt.ptr; if(n>=5 && streqi(p[4],"m")){ int m=mark_find(&pr->marks,target); if(m>=0){ if(rt.owned) free((char*)rt.ptr); free_parts(p,n); free(line); return m; }} else if(is_number(target)) { int t=atoi(target)-1; if(t>=0&&t<pr->count){ if(rt.owned) free((char*)rt.ptr); free_parts(p,n); free(line); return t; }} if(rt.owned) free((char*)rt.ptr); } free_parts(p,n); }
     else if (streqi(cmd,"del")) { Res rn=rfast(&pr->boxes,args); box_del(&pr->boxes,rn.ptr); if(rn.owned) free((char*)rn.ptr); }
+    else if (streqi(cmd,"mark")) { Res rn=rfast(&pr->boxes,args); mark_set(&pr->marks,rn.ptr,pc+1); if(rn.owned) free((char*)rn.ptr); }
     else if (streqi(cmd,"str")) { int n; char **p=split_bars(args,&n);
         if(n<3) fprintf(stderr,"str: usage str|$out|$op|$args...\n");
         else {
@@ -2770,6 +2780,7 @@ static int exec_op(Program *pr, Op *op, int pc) {
     case OP_DEL: { Res rn=rfast(&pr->boxes,p[0]); box_del(&pr->boxes,rn.ptr); if(rn.owned) free((char*)rn.ptr); } return pc+1;
     case OP_END: pr->halted=1; return pr->count;
     case OP_PREMARK: return pc+1;
+    case OP_MARK: if(n>=1){ Res rn=rfast(&pr->boxes,p[0]); mark_set(&pr->marks,rn.ptr,pc+1); if(rn.owned) free((char*)rn.ptr); } return pc+1;
     }
     return pc+1;
 }
@@ -2792,7 +2803,7 @@ static void program_load(Program *pr, const char *src) {
         if(streqi(cmd,"premark")){ mark_add(&pr->marks,args,i); k=OP_PREMARK; }
         else if(streqi(cmd,"box"))k=OP_BOX; else if(streqi(cmd,"say"))k=OP_SAY; else if(streqi(cmd,"math"))k=OP_MATH;
         else if(streqi(cmd,"test"))k=OP_TEST; else if(streqi(cmd,"if"))k=OP_IF; else if(streqi(cmd,"jump"))k=OP_JUMP;
-        else if(streqi(cmd,"jumpif"))k=OP_JUMPIF; else if(streqi(cmd,"del"))k=OP_DEL; else if(streqi(cmd,"end"))k=OP_END;
+        else if(streqi(cmd,"jumpif"))k=OP_JUMPIF; else if(streqi(cmd,"del"))k=OP_DEL; else if(streqi(cmd,"end"))k=OP_END; else if(streqi(cmd,"mark"))k=OP_MARK;
         else if (!cmd_known(cmd)) {
             fprintf(stderr, "line %d: unknown command '%s'\n", i+1, cmd);
             free(line); continue; }

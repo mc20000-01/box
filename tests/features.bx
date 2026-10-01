@@ -422,6 +422,53 @@ file ax|exists|.build/feature.tmp
 box ck_name|file-removed
 box ck_got|$ax
 box ck_want|0
+box ck_next|t_mark_loop
+jump check|m
+
+// A runtime `mark` is only a destination once the line has run. This loop has
+// no premark, so the three attempts below only happen if `mark` registers the
+// name when it is reached.
+premark t_mark_loop
+box tries|0
+mark retry
+say attempt $tries
+math tries|$tries|1|+
+jumpif $tries|<|3|retry|m
+box ck_name|mark-registers-at-runtime
+box ck_got|$tries
+box ck_want|3
+box ck_next|t_mark_name
+jump check|m
+
+// The same, with the name built out of a box while the program runs: `mark`
+// resolves $n, and the jump reads the name out of $t. Two passes through the
+// top of the block mean the jump resolved to the mark.
+premark t_mark_name
+box n|hello
+box t|go-$n
+box done|0
+box loops|0
+mark go-$n
+math loops|$loops|1|+
+jumpif $done|==|1|t_mark_name_hit|m
+math done|$done|1|+
+jump $t|m
+say never get here
+jump t_mark_bad|m
+
+premark t_mark_name_hit
+box ck_name|mark-name-built-at-runtime
+box ck_got|$loops
+box ck_want|2
+box ck_next|t_math_bad_op
+jump check|m
+
+// An operator math does not have is reported, not silently answered with 0.
+premark t_math_bad_op
+math bad|5|3|^
+box ck_name|math-unknown-operator-is-zero
+box ck_got|$bad
+box ck_want|0
 box ck_next|t_done
 jump check|m
 
