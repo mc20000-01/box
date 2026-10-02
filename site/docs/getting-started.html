@@ -26,10 +26,10 @@
     <ul>
         <li><a class="on" href="getting-started.html">Getting Started</a></li>
         <li><a class="" href="math-and-logic.html">Math and Logic</a></li>
-        <li><a class="" href="flow-control.html">Jumping Around: Flow Control</a></li>
+        <li><a class="" href="flow-control.html">Flow Control</a></li>
         <li><a class="" href="power-users.html">Power Users</a></li>
-        <li><a class="" href="command-line.html">Driving bx From Your Shell</a></li>
-        <li><a class="" href="compiling.html">Implementations and Compile Targets</a></li>
+        <li><a class="" href="command-line.html">Command Line</a></li>
+        <li><a class="" href="compiling.html">Compiling and Targets</a></li>
         <li><a class="" href="libraries.html">Libraries</a></li>
         <li><a class="" href="ui.html">UI</a></li>
     </ul>
@@ -97,13 +97,12 @@ end</code></pre>
 <p>There are six forms. All of them are in <a href="power-users.html">Power Users</a>, and that is the one page worth reading twice:</p>
 <p>| you write | you get | use it for | |---|---|---| | <code>$n</code> | the value of <code>n</code> | almost everything | | <code>\(n)</code> | the value of <code>n</code>, stops at <code>)</code> | a name in the middle of a word | | <code>$$n</code> | the box <em>named by</em> the value of <code>n</code> | indirection, tables by name | | <code>:$n</code> | <code>n</code>'s value, colon dropped | <code>C:$path</code> | | <code>\/:</code> | a literal <code>:</code> | when the colon is not your own escape | | <code>$$</code> | a literal <code>$</code> | writing a <code>$</code> in text |</p>
 <h2 id="arithmetic">Arithmetic</h2>
-<p><code>math</code> takes a destination, two operands, and an operator:</p>
+<p><code>math</code> takes a destination, <strong>both operands, then the operator</strong>:</p>
 <pre><code class="language-bx">math sum|17|25|+
 say $sum
 end</code></pre>
 <p>Output is <code>42</code>.</p>
-<p>Operators are <code>+</code> <code>-</code> <code>*</code> <code>/</code> <code>%</code>, and <code>x</code> also works for multiply. Division and modulo by zero give <code>0</code> rather than stopping the program, so a loop counter that has gone wrong does not take the rest of the script with it.</p>
-<p>Operands are integers, and the result is an integer. There is a separate float library for that; see <a href="math-and-logic.html">Math and Logic</a>.</p>
+<p>The signature is <code>math|OUT|A|B|OP</code>. Operators: <code>+</code> <code>-</code> <code>*</code> <code>x</code> <code>/</code> <code>%</code>. Division and modulo by zero yield <code>0</code> (no crash).</p>
 <pre><code class="language-bx">math half|9|2|/
 say $half
 end</code></pre>
@@ -126,9 +125,9 @@ say finished
 end</code></pre>
 <p><code>premark</code> does not run anything. It records a name against a line number. The <code>jump top|m</code> above it is the one that executes, and the <code>premark</code> line itself is skipped when execution flows past it. That is why every block here ends with an explicit jump and never relies on falling through.</p>
 <h3 id="comparison-and-jumpif">Comparison and <code>jumpif</code></h3>
-<p><code>jumpif</code> takes a left value, an operator, a right value, a mark to go to when true, and optionally a different mark to go to when false:</p>
-<pre><code class="language-bx">jumpif $a|===|$b|if_equal|if_not_equal|m</code></pre>
-<p>The operators are <code>===</code> (equal), <code>!==</code> (not equal), <code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code>. Both sides are resolved first, so either may be a <code>$box</code>.</p>
+<p><code>jumpif</code> evaluates a condition and jumps to a mark when true:</p>
+<pre><code class="language-bx">jumpif $a|===|$b|if_equal|m</code></pre>
+<p>The signature is <code>jumpif|LEFT|OP|RIGHT|TARGET|m</code>. Operators: <code>===</code> (equal), <code>!==</code> (not equal), <code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code>. Both sides are resolved first, so either may be a <code>$box</code>. The <code>|m</code> suffix means TARGET is a mark name; without it, TARGET is a 1-based line number.</p>
 <p>Comparison is by string, not by number, because everything is a string. That is almost never what you want arithmetically, and <code>10</code> sorts before <code>9</code>. To compare numbers, use <code>math</code> to reduce the difference to something comparable, or use the math library's own helpers.</p>
 <h2 id="files">Files</h2>
 <p><code>file</code> opens, writes, reads and closes. The shape is always <code>file|$dest|$op|...</code>, and the answer from most operations lands in <code>$dest</code>. Note the order: the destination box comes first, the <strong>operation name second</strong>. It reads backwards from every other command in the language, so it is worth checking twice.</p>

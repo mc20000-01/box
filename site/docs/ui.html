@@ -26,10 +26,10 @@
     <ul>
         <li><a class="" href="getting-started.html">Getting Started</a></li>
         <li><a class="" href="math-and-logic.html">Math and Logic</a></li>
-        <li><a class="" href="flow-control.html">Jumping Around: Flow Control</a></li>
+        <li><a class="" href="flow-control.html">Flow Control</a></li>
         <li><a class="" href="power-users.html">Power Users</a></li>
-        <li><a class="" href="command-line.html">Driving bx From Your Shell</a></li>
-        <li><a class="" href="compiling.html">Implementations and Compile Targets</a></li>
+        <li><a class="" href="command-line.html">Command Line</a></li>
+        <li><a class="" href="compiling.html">Compiling and Targets</a></li>
         <li><a class="" href="libraries.html">Libraries</a></li>
         <li><a class="on" href="ui.html">UI</a></li>
     </ul>
@@ -179,7 +179,9 @@ end</code></pre>
 <p>Output is <code>pressed=1</code>.</p>
 <p><code>pointer|X|Y|ACTION</code> moves and clicks, <code>key|KEY|ACTION</code> types, and <code>focus|ID|next|prev</code> moves focus. <code>press|ID|0|1</code>, <code>select</code> and <code>hit</code> are the direct ways to drive state from a script or a test. <code>input|release</code> drops the held state so one click does not repeat forever.</p>
 <h2 id="tweens-and-easing">Tweens and easing</h2>
-<p>A tween moves one property from one value to another over a duration.</p>
+<p>A tween moves one property from one value to another over a duration. The signature is:</p>
+<pre><code>ui tween|ID|TARGET|PROP|FROM|TO|DURATION[|FN]</code></pre>
+<p>| field | meaning | |---|---| | ID | arbitrary name for this tween | | TARGET | element id to animate | | PROP | property name (<code>x</code>, <code>y</code>, <code>w</code>, <code>h</code>, <code>opacity</code>, ...) | | FROM | start value | | TO | end value | | DURATION | seconds, float | | FN | optional easing function (<code>ease</code>, <code>ease-in</code>, <code>ease-out</code>, <code>ease-in-out</code>, <code>linear</code>, <code>bounce</code>, <code>elastic</code>) |</p>
 <pre><code class="language-bx">lib load|gfx
 high.gfx.fbsize 400|300
 ui init
@@ -187,7 +189,7 @@ ui.new|root|frame
 ui.set|root|w|400
 ui.new|box|panel|root
 ui.set|box|x|0
-ui.tween|box|x|0|200|0.5|ease
+ui.tween|slidein|box|x|0|200|0.5|ease
 ui.frame|step|0.25
 ui.get|box|x|x1
 ui.frame|step|0.25

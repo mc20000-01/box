@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Jumping Around: Flow Control - BoxedLANG docs</title>
-<meta name="description" content="Jumping Around: Flow Control">
+<title>Flow Control - BoxedLANG docs</title>
+<meta name="description" content="Flow Control">
 <link rel="icon" href="../favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../style.css">
 </head>
@@ -26,10 +26,10 @@
     <ul>
         <li><a class="" href="getting-started.html">Getting Started</a></li>
         <li><a class="" href="math-and-logic.html">Math and Logic</a></li>
-        <li><a class="on" href="flow-control.html">Jumping Around: Flow Control</a></li>
+        <li><a class="on" href="flow-control.html">Flow Control</a></li>
         <li><a class="" href="power-users.html">Power Users</a></li>
-        <li><a class="" href="command-line.html">Driving bx From Your Shell</a></li>
-        <li><a class="" href="compiling.html">Implementations and Compile Targets</a></li>
+        <li><a class="" href="command-line.html">Command Line</a></li>
+        <li><a class="" href="compiling.html">Compiling and Targets</a></li>
         <li><a class="" href="libraries.html">Libraries</a></li>
         <li><a class="" href="ui.html">UI</a></li>
     </ul>
@@ -39,70 +39,46 @@
     </p>
 </nav>
 <div class="doc">
-<h1 id="jumping-around-flow-control">Jumping Around: Flow Control</h1>
-<h2 id="jumping-around">JUMPING AROUND!</h2>
-<p>Programs don't just have to run straight down from top to bottom. You can jump around!</p>
-<h3 id="planting-flags-premark-and-mark">Planting Flags: premark and mark</h3>
-<p>A mark gives a name to a location in your program, like planting a flag. BX has <strong>two</strong> ways to plant one, and the difference is <em>when</em> they happen.</p>
-<p><strong><code>premark NAME</code> is a pre-run mark.</strong> Before a single line of your BX code executes, <code>bx</code> reads your whole program and collects every <code>premark</code> into the marks list. That means every <code>premark</code> in the file already exists on line one, so you are free to jump forward to a <code>premark</code> that appears further down your program.</p>
-<pre><code class="language-bx">premark loop
-</code></pre>
-<p><strong><code>mark NAME</code> is a runtime mark.</strong> <code>mark</code> is an ordinary command. It only adds <code>NAME</code> to the marks list when execution actually reaches that line, and the name it adds can be built out of boxes at that moment.</p>
-<pre><code class="language-bx">box i|1
-mark retry-$i
-</code></pre>
-<p>Compare the two:</p>
-<p>| | <code>premark NAME</code> | <code>mark NAME</code> | | --- | --- | --- | | When it runs | Before any BX code runs, while the program loads | When your program reaches the line | | Name | Literal text, taken from the source | Resolved first, so <code>$boxes</code> and <code>\)boxes</code> work | | Jumping to it before it exists | Always fine | Not found, the jump is ignored and the program carries on | | Good for | Fixed labels known ahead of time | Labels created later, or built from user input |</p>
-<p>Both kinds end up in the <em>same</em> marks list, so <code>jump NAME|m</code> and <code>jumpif ... NAME|m</code> treat them identically. There is no extra syntax to remember. A <code>mark</code> that runs a second time simply re-points its name to the new spot, so a mark inside a loop never fills the list up with duplicates.</p>
-<p>A <code>premark</code> points at its own line (jumping to it just falls through to the next line), while a <code>mark</code> points at the line <em>after</em> it, which is usually what you want when a loop jumps back.</p>
-<h3 id="jump-and-jumpif">JUMP and JUMPIF</h3>
-<p>The <code>jump</code> command changes the current program position.</p>
-<ul>
-<li>To jump to a specific line number, just use the number: <code>jump 22</code>. Line numbers are physical lines counted from 1, including blank and comment lines.</li>
-</ul>
-<ul>
-<li>To jump to a mark you planted, you <strong>must</strong> add <code>|m</code> to the end so BX knows you are looking for a mark name, not a line number: <code>jump loop|m</code>. If the name is not in the marks list, or the line number is out of range, the jump is ignored and execution moves on to the next line.</li>
-</ul>
-<p>You can combine jumps with conditions using <code>jumpif</code>! This is how you build amazing things like loops and game menus.</p>
+<h1 id="flow-control">Flow Control</h1>
+<h2 id="marks-premark-vs-mark">Marks — <code>premark</code> vs <code>mark</code></h2>
+<p>BX has two ways to name a location for jumps:</p>
+<p>| | <code>premark NAME</code> | <code>mark NAME</code> | |---|---|---| | <strong>When it runs</strong> | At load time (before any code executes) | At runtime (when the line is reached) | | <strong>Name</strong> | Literal text from source | Resolved — <code>$boxes</code> and <code>\(boxes)</code> work | | <strong>Jump before it exists</strong> | Always works | Ignored — jump falls through | | <strong>Points to</strong> | Its own line (jump falls through) | <strong>The line after it</strong> | | <strong>Re-running</strong> | No effect (single entry) | Re-points the name to the new line |</p>
+<p>Both kinds share the same marks list; <code>jump NAME|m</code> and <code>jumpif ... NAME|m</code> treat them identically.</p>
+<pre><code class="language-bx">premark loop      # exists at line 1
+say before loop
+mark here         # created when reached
+say after mark
+jump loop|m       # jumps to line 1 ("premark loop")
+jump here|m       # jumps to "say after mark"</code></pre>
+<h2 id="jump-and-jumpif"><code>jump</code> and <code>jumpif</code></h2>
+<pre><code>jump TARGET           # line number (1-based, includes blanks/comments)
+jump NAME|m           # mark name (|m required)
+jumpif LEFT OP RIGHT TARGET [|m]</code></pre>
+<p>If TARGET is not found or out of range, the jump is ignored and execution continues.</p>
+<h2 id="loops">Loops</h2>
 <pre><code class="language-bx">box i|0
-
 premark loop
-
 say $i
 math i|$i|1|+
-jumpif $i|&lt;|10|loop|m
-
-say Finished.
-end
-</code></pre>
-<p>This creates a counting loop! It prints the number, adds 1 to it, and jumps back to the <code>loop</code> mark as long as <code>$i</code> is less than 10.</p>
-<h3 id="loops-built-with-mark">Loops built with mark</h3>
-<p>Because <code>mark</code> waits to be reached, it can sit inside a loop and plant a new mark on every pass. Here <code>retry</code> only becomes a real destination the first time line 5 runs, and jumping back to it lands on <code>say attempt</code>, never on the <code>mark</code> line itself.</p>
+jumpif $i|&lt;|5|loop|m
+say done
+end</code></pre>
+<p>Output: <code>0 1 2 3 4 done</code></p>
+<h2 id="mark-inside-a-loop"><code>mark</code> inside a loop</h2>
+<p>A <code>mark</code> re-points on each pass, so a backward jump lands <strong>after</strong> the mark:</p>
 <pre><code class="language-bx">box tries|0
-
 premark start
-
 mark retry
 say attempt $tries
 math tries|$tries|1|+
 ask try again ?
 if $?|==|y|jump|retry|m
-
 say gave up after $tries attempts
-end
-</code></pre>
-<p>Feed it <code>y</code>, <code>y</code>, <code>n</code> and you get:</p>
-<pre><code class="language-text">attempt 0
-try again attempt 1
-try again attempt 2
-try again gave up after 3 attempts
-</code></pre>
-<h3 id="mark-names-can-be-built-at-runtime">Mark names can be built at runtime</h3>
-<p>Since <code>mark</code> resolves its name like any other value, the same loop can plant a <em>different</em> mark on every pass. This is the runtime counterpart of the <code>premark app-calc</code> style dispatch in <code>os/os.bx</code>, except the names here are generated instead of written out by hand.</p>
+end</code></pre>
+<h2 id="mark-names-built-at-runtime">Mark names built at runtime</h2>
+<p><code>mark</code> resolves its name at runtime, so you can generate different marks per iteration:</p>
 <pre><code class="language-bx">box id|0
-
 premark build
-
 mark try-$id
 say trying $id
 math id|$id|1|+
@@ -111,10 +87,12 @@ jumpif $id|&lt;|2|build|m
 say build finished
 ask which try try-1
 jump $try-1|m
-end
-</code></pre>
-<p>The build loop plants <code>try-0</code> and <code>try-1</code> on its way past. Then <code>ask which try try-1</code> prints its prompt and drops whatever the user types into the box <code>try-1</code>, and <code>jump $try-1|m</code> uses that box as the mark name. Jumping to <code>try-1</code> lands right after <code>mark try-1</code>, which is <code>say trying $id</code>.</p>
-<hr>
+end</code></pre>
+<p>The loop plants <code>try-0</code> and <code>try-1</code>. The <code>ask</code> writes the user's answer into box <code>try-1</code>, and <code>jump $try-1|m</code> uses that box as the mark name.</p>
+<h2 id="end"><code>end</code></h2>
+<p><code>end</code> stops the program. It is optional — falling off the bottom also ends — but useful to terminate early inside a branch.</p>
+<h2 id="summary-table">Summary table</h2>
+<p>| command | purpose | |---|---| | <code>premark NAME</code> | load-time label | | <code>mark NAME</code> | runtime label (re-points) | | <code>jump TARGET</code> | unconditional jump (line # or <code>NAME|m</code>) | | <code>jumpif L OP R TARGET</code> | conditional jump | | <code>if L OP R CMD</code> | run one nested command if true | | <code>test OUT L OP R T F</code> | box = T if true else F | | <code>end</code> | stop program |</p>
 <p class="next"><a href="index.html">All chapters</a></p>
 </div></div>
 </main>
