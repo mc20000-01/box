@@ -662,6 +662,8 @@ def main():
         # The manual moved to docs/*.html. Keep the old URL working so links
         # from outside the site do not rot.
         "docs.html": DOCS_REDIRECT,
+        # Custom domain for GitHub Pages
+        "CNAME": "box.sdisk.us\n",
     }
     for name, content in files.items():
         with open(os.path.join(OUT, name), "w", encoding="utf-8") as fh:
